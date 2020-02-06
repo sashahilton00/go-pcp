@@ -4,8 +4,6 @@ import(
   "crypto/rand"
   "encoding/binary"
   "net"
-
-  log "github.com/sirupsen/logrus"
 )
 
 //At a later date it would be worth integrating with the IANA package to be fully compliant.
@@ -76,7 +74,6 @@ func (c *Client) AddPortMapping(protocol Protocol, internalPort, requestedExtern
   if err != nil {
     return ErrRequestDataPayload
   }
-  log.Debugf("Request bytes: %x Opcode: %s", requestDataBytes, OpCode(OpMap))
   err = c.sendMessage(requestDataBytes)
   if err != nil {
     return ErrNetworkSend

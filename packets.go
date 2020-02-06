@@ -133,6 +133,7 @@ func (req *RequestPacket) marshal() (msg []byte, err error) {
   msg = append(msg, req.opData...)
   //Encode and append the options
   var options []byte
+  log.Debugf("Number of options in request: %d", len(req.pcpOptions))
   for _, option := range req.pcpOptions {
     var optionBytes []byte
     optionBytes = append(optionBytes, byte(option.opCode))
@@ -152,6 +153,7 @@ func (req *RequestPacket) marshal() (msg []byte, err error) {
   if len(msg) > 1100 {
     return nil, ErrPacketTooLarge
   }
+  log.Debugf("Request Bytes: %x\n", msg)
   return msg, nil
 }
 

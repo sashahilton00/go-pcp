@@ -28,7 +28,7 @@ func main() {
   }
   err = client.AddPortMapping(ProtocolTCP, 8080, 0, net.ParseIP("127.0.0.2"), DefaultLifetimeSeconds)
   if err == nil {
-    log.Debug("successfully send port map request")
+    log.Debug("successfully sent port map request")
   }
   //_ = client.sendMessage(msg)
   for {
