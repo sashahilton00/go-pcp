@@ -1,6 +1,7 @@
 package main
 
 import(
+  "fmt"
   "log"
   "net"
   "time"
@@ -33,6 +34,7 @@ func NewClient(gatewayAddr net.IP) (client *Client, err error) {
   return client, nil
 }
 
+//Should rename to handleMessage
 func (c *Client) readMessage() (err error) {
   //Listens for messages from UDP conn.
   //Creates Event depending on message.
@@ -54,7 +56,8 @@ func (c *Client) readMessage() (err error) {
           log.Printf("Error occurred when receiving UDP packet: %s\n", err)
     			continue
     		}
-        if string(from.IP) != string(c.GatewayAddr) {
+        //Seems to be the only thing that works. Should fix proerly in future.
+        if fmt.Sprintf("%x", from.IP) != fmt.Sprintf("%x", c.GatewayAddr) {
           log.Println(ErrAddressMismatch)
           continue
         }
@@ -78,6 +81,7 @@ func (c *Client) readMessage() (err error) {
 }
 
 func (c *Client) sendMessage(msg []byte) (err error) {
+  _, err = c.conn.Write(msg)
   return
 }
 

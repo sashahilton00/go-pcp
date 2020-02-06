@@ -2,7 +2,6 @@ package main
 
 import(
   "encoding/binary"
-  "log"
   "net"
 
   "github.com/boljen/go-bitmap"
@@ -128,11 +127,11 @@ func (req *RequestPacket) marshal() (msg []byte, err error) {
 }
 
 func (res *ResponsePacket) unmarshal(data []byte) (err error) {
+  //log.Printf("%x\n", data)
   version := uint8(data[0])
   if version != 2 {
     return ErrUnsupportedVersion
   }
-  log.Printf("%08b",data[1])
   if !bitmap.GetBit(data[1], 7) {
     return ErrWrongPacketType
   }
@@ -143,8 +142,8 @@ func (res *ResponsePacket) unmarshal(data []byte) (err error) {
   }
   res.opCode = OpCode(opCode)
   res.resultCode = ResultCode(data[3])
-  res.lifetime = binary.BigEndian.Uint32(data[4:7])
-  res.epoch = binary.BigEndian.Uint32(data[8:11])
+  res.lifetime = binary.BigEndian.Uint32(data[4:8])
+  res.epoch = binary.BigEndian.Uint32(data[8:12])
   var opDataLen int
   //This could be trimmed down - left for clarity.
   switch res.opCode {
@@ -157,7 +156,9 @@ func (res *ResponsePacket) unmarshal(data []byte) (err error) {
   default:
     opDataLen = 0
   }
-  res.opData = data[24:opDataLen]
+  if opDataLen > 0 {
+    res.opData = data[24:24+opDataLen]
+  }
   //Need to implement PCP options
   return
 }
