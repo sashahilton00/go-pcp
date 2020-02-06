@@ -2,9 +2,10 @@ package main
 
 import(
   "fmt"
-  "log"
   "net"
   "time"
+
+  log "github.com/sirupsen/logrus"
 )
 
 type Event struct {
@@ -53,12 +54,12 @@ func (c *Client) readMessage() (err error) {
         msg := make([]byte, 2048)
         len, from, err := c.conn.ReadFromUDP(msg)
         if err != nil {
-          log.Printf("Error occurred when receiving UDP packet: %s\n", err)
+          log.Debugf("Error occurred when receiving UDP packet: %s\n", err)
     			continue
     		}
         //Seems to be the only thing that works. Should fix proerly in future.
         if fmt.Sprintf("%x", from.IP) != fmt.Sprintf("%x", c.GatewayAddr) {
-          log.Println(ErrAddressMismatch)
+          log.Debug(ErrAddressMismatch)
           continue
         }
         msg = msg[:len]
@@ -72,7 +73,7 @@ func (c *Client) readMessage() (err error) {
       var res ResponsePacket
       err = res.unmarshal(msg)
       if err != nil {
-        log.Println(ErrWrongPacketType)
+        log.Debug(ErrWrongPacketType)
         continue
       }
       //Process ResponsePacket here and send events.

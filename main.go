@@ -1,14 +1,15 @@
 package main
 
 import(
-  "log"
   "net"
   "time"
+
+  log "github.com/sirupsen/logrus"
 )
 
-const(
-  DefaultLifetimeSeconds = 3600
-)
+func init() {
+  log.SetLevel(log.DebugLevel)
+}
 
 func main() {
   addr, err := GetInternalAddress()
@@ -19,28 +20,18 @@ func main() {
   if err != nil {
     log.Fatal(err)
   }
-  log.Printf("Internal IP: %s Gateway IP: %s", addr, gatewayAddr)
-  //log.Println(OpMap, int(OpMap))
-
-  rp := &RequestPacket{OpCode(OpAnnounce),DefaultLifetimeSeconds,addr,[]byte{0xaa,0xbb,0xcc,0xdd},nil}
-  msg, err := rp.marshal()
-  if err != nil {
-    log.Fatal(err)
-  }
-  log.Printf("%x\n", msg)
+  log.Infof("Internal IP: %s Gateway IP: %s", addr, gatewayAddr)
+  //Only temporary, for testing with local server
   client, err := NewClient(net.ParseIP("127.0.0.1"))
   if err != nil {
-    log.Println(err)
+    log.Error(err)
   }
-  _ = client.sendMessage(msg)
+  err = client.AddPortMapping(ProtocolTCP, 8080, 0, net.ParseIP("127.0.0.2"), DefaultLifetimeSeconds)
+  if err == nil {
+    log.Debug("successfully send port map request")
+  }
+  //_ = client.sendMessage(msg)
   for {
     time.Sleep(time.Millisecond)
   }
-  //Need to create response packet
-  /*var res ResponsePacket
-  err = res.unmarshal(msg)
-  if err != nil {
-    log.Fatal(err)
-  }
-  log.Println(res)*/
 }

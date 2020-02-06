@@ -5,13 +5,19 @@ import(
   "net"
 
   "github.com/boljen/go-bitmap"
+  log "github.com/sirupsen/logrus"
 )
 
 type OpCode uint8
+type OptionOpCode uint8
 type ResultCode uint8
 
 func (o OpCode) String() string {
-    return [...]string{"Announce","Map","Peer"}[o]
+    return [...]string{"OpAnnounce","OpMap","OpPeer"}[o]
+}
+
+func (o OptionOpCode) String() string {
+    return [...]string{"OptionOpReserved","OptionOpThirdParty","OptionOpPreferFailure","OptionOpFilter","OptionOpNonce","OptionOpAuthenticationTag","OptionOpPaAuthenticationTag","OptionOpEapPayload","OptionOpPrf","OptionOpMacAlgorithm","OptionOpSessionLifetime","OptionOpReceivedPak","OptionOpIdIndicator","OptionOpThirdPartyId"}[o]
 }
 
 func (r ResultCode) String() string {
@@ -19,9 +25,31 @@ func (r ResultCode) String() string {
 }
 
 const(
+  DefaultLifetimeSeconds = 3600
+)
+
+const(
   OpAnnounce OpCode = iota
   OpMap
   OpPeer
+)
+
+const(
+  OptionOpReserved OptionOpCode = iota
+  OptionOpThirdParty
+  OptionOpPreferFailure
+  OptionOpFilter
+  OptionOpNonce
+  OptionOpAuthenticationTag
+  OptionOpPaAuthenticationTag
+  OptionOpEapPayload
+  OptionOpPrf
+  OptionOpMacAlgorithm
+  OptionOpSessionLifetime
+  OptionOpReceivedPak
+  OptionOpIdIndicator
+  OptionOpThirdPartyId
+  //Currently not implementing 128+
 )
 
 const(
@@ -43,7 +71,7 @@ const(
 
 
 type PCPOption struct {
-  opCode OpCode
+  opCode OptionOpCode
   data []byte
 }
 
@@ -98,6 +126,7 @@ func (req *RequestPacket) marshal() (msg []byte, err error) {
   msg = append(msg, lifetimeBytes...)
   //client ip is always a 16 byte (128 bit) block
   addr := make([]byte, 16)
+  log.Debugf("Client addr: %x\n", req.clientAddr)
   copy(addr, req.clientAddr)
   msg = append(msg, addr...)
   //opData is the opcode-specific data
@@ -127,7 +156,7 @@ func (req *RequestPacket) marshal() (msg []byte, err error) {
 }
 
 func (res *ResponsePacket) unmarshal(data []byte) (err error) {
-  //log.Printf("%x\n", data)
+  log.Debugf("Response Bytes: %x\n", data)
   version := uint8(data[0])
   if version != 2 {
     return ErrUnsupportedVersion
@@ -138,10 +167,11 @@ func (res *ResponsePacket) unmarshal(data []byte) (err error) {
   var opCode byte
   for i := 0; i < 7; i++ {
     opCodeBit := bitmap.GetBit(data[1], i)
-    bitmap.SetBit(opCode, i, opCodeBit)
+    opCode = bitmap.SetBit(opCode, i, opCodeBit)
   }
   res.opCode = OpCode(opCode)
   res.resultCode = ResultCode(data[3])
+  log.Debugf("Result Code: %s", res.resultCode)
   res.lifetime = binary.BigEndian.Uint32(data[4:8])
   res.epoch = binary.BigEndian.Uint32(data[8:12])
   var opDataLen int
@@ -156,9 +186,37 @@ func (res *ResponsePacket) unmarshal(data []byte) (err error) {
   default:
     opDataLen = 0
   }
+  log.Debugf("Opcode: %s\n", res.opCode)
+  log.Debugf("Op data len: %d\n", opDataLen)
   if opDataLen > 0 {
     res.opData = data[24:24+opDataLen]
   }
+  currentOffset := 24 + opDataLen
   //Need to implement PCP options
+  for currentOffset < len(data) {
+    log.Debugf("Current offset: %d\n", currentOffset)
+    log.Debugf("Remaining data: %x\n", data[currentOffset:])
+    opCode := OptionOpCode(data[currentOffset])
+    log.Debugf("Option OpCode: %s\n", opCode)
+    optionLengthBytes := make([]byte, 2)
+    copy(optionLengthBytes, data[currentOffset + 2:currentOffset + 3])
+    optionLength := binary.BigEndian.Uint16(optionLengthBytes)
+    log.Debugf("Option data length: %d", optionLength)
+    var optionData []byte
+    dataStart := currentOffset + 3
+    if optionLength > 0 {
+      dataEnd := dataStart + int(optionLength)
+      optionData = data[dataStart:dataEnd]
+      currentOffset = dataEnd
+    } else {
+      currentOffset = dataStart
+    }
+    //OpCode 0 is reserved, has no function, hence dropped due to possible
+    //entries from reading empty bytes
+    if opCode != 0 {
+      option := PCPOption{opCode,optionData}
+      res.pcpOptions = append(res.pcpOptions, option)
+    }
+  }
   return
 }
