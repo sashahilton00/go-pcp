@@ -28,6 +28,16 @@ type OpDataMap struct {
   externalIP net.IP //Also only a suggestion
 }
 
+type PortMap struct {
+  nonce []byte
+  protocol Protocol
+  internalPort uint16
+  externalPort uint16
+  externalIP net.IP
+  active bool
+  lifetime uint32
+}
+
 func (data *OpDataMap) marshal() (msg []byte, err error) {
   //Potentially relax requirement for non-zero. Appears to be valid in the spec when combined with ProtocolAll.
   if data.internalPort == 0 {
@@ -58,6 +68,10 @@ func (data *OpDataMap) marshal() (msg []byte, err error) {
   return
 }
 
+func (data *OpDataMap) unmarshal() (err error) {
+  return
+}
+
 //Need to add support for PCP options later.
 func (c *Client) AddPortMapping(protocol Protocol, internalPort, requestedExternalPort uint16, requestedAddr net.IP, lifetime uint32) (err error) {
   mapData := &OpDataMap{nil,protocol,internalPort,requestedExternalPort,requestedAddr}
@@ -78,6 +92,7 @@ func (c *Client) AddPortMapping(protocol Protocol, internalPort, requestedExtern
   if err != nil {
     return ErrNetworkSend
   }
+  //Need to add provisional port mapping to client struct here.
   return
 }
 
@@ -85,4 +100,29 @@ func genRandomBytes(size int) (blk []byte, err error) {
     blk = make([]byte, size)
     _, err = rand.Read(blk)
     return
+}
+
+func (c *Client) epochValid(clientTime int64, serverTime uint32) bool {
+  //Function will be used to check whether to trigger mapping renewals and such.
+  e := c.epoch
+  s := false
+  if e.prevServerTime == 0 {
+    //It's the first timestamp, store it.
+    s = true
+  } else if (e.prevServerTime - serverTime) <= 1 {
+    //If in sync, check delta
+    clientDelta := clientTime - e.prevClientTime
+    serverDelta := serverTime - e.prevServerTime
+    if (clientDelta + 2 < int64(serverDelta - (serverDelta / 16))) || (int64(serverDelta + 2) < clientDelta - (clientDelta / 16)) {
+      s = false
+    } else {
+      s = true
+    }
+  } else {
+    //PCP server out of sync. Need to trigger refresh
+    s = false
+  }
+  e.prevServerTime = serverTime
+  e.prevClientTime = clientTime
+  return s
 }

@@ -23,6 +23,7 @@ func main() {
   log.Infof("Internal IP: %s Gateway IP: %s", addr, gatewayAddr)
   //Only temporary, for testing with local server
   client, err := NewClient(net.ParseIP("127.0.0.1"))
+  //client, err := NewClient(gatewayAddr)
   if err != nil {
     log.Error(err)
   }
@@ -30,7 +31,6 @@ func main() {
   if err == nil {
     log.Debug("successfully sent port map request")
   }
-  //_ = client.sendMessage(msg)
   for {
     time.Sleep(time.Millisecond)
   }

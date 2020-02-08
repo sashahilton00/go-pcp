@@ -175,7 +175,9 @@ func (res *ResponsePacket) unmarshal(data []byte) (err error) {
   res.resultCode = ResultCode(data[3])
   log.Debugf("Result Code: %s", res.resultCode)
   res.lifetime = binary.BigEndian.Uint32(data[4:8])
+  log.Debugf("Response Lifetime: %d", res.lifetime)
   res.epoch = binary.BigEndian.Uint32(data[8:12])
+  log.Debugf("Response Epoch: %d", res.epoch)
   var opDataLen int
   //This could be trimmed down - left for clarity.
   switch res.opCode {

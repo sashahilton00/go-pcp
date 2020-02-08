@@ -13,12 +13,18 @@ type Event struct {
   Data []byte
 }
 
+type ClientEpoch struct {
+  prevServerTime uint32
+  prevClientTime int64
+}
+
 type Client struct {
   GatewayAddr net.IP
   Event chan Event
 
   conn *net.UDPConn
   cancelled bool
+  epoch *ClientEpoch
 }
 
 //Potentially add deviceAddr at a later stage
@@ -29,9 +35,11 @@ func NewClient(gatewayAddr net.IP) (client *Client, err error) {
 		return nil, err
 	}
   eventChan := make(chan Event)
-  client = &Client{gatewayAddr,eventChan,conn,false}
+  clientEpoch := &ClientEpoch{}
+  client = &Client{gatewayAddr,eventChan,conn,false,clientEpoch}
   //Need to set up event handler loop here for incoming messages.
   go client.readMessage()
+  //Need to create mapping refresh loop
   return client, nil
 }
 
@@ -77,6 +85,24 @@ func (c *Client) readMessage() (err error) {
         continue
       }
       //Process ResponsePacket here and send events.
+      switch res.opCode {
+      case OpAnnounce:
+        //OpAnnounce case
+      case OpMap:
+        //OpMap case
+      case OpPeer:
+        //OpPeer case
+      default:
+        log.Warnf("Unrecognised OpCode: %d", res.opCode)
+      }
+      t := time.Now()
+      valid := c.epochValid(t.Unix(), res.epoch)
+      if !valid {
+        //PCP server lost state. Refresh mappings.
+        log.Debug("Invalid epoch received. Refreshing mappings.")
+      } else {
+        log.Debugf("Epoch valid. Server Time: %d, Client Time: %d", res.epoch, t.Unix())
+      }
     }
   }
 }
