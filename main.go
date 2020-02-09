@@ -31,6 +31,7 @@ func main() {
   if err == nil {
     log.Debug("successfully sent port map request")
   }
+  log.Debugf("%+v\n",client)
   for {
     time.Sleep(time.Millisecond)
   }

@@ -36,6 +36,7 @@ type PortMap struct {
   externalIP net.IP
   active bool
   lifetime uint32
+  expireTime int64
 }
 
 func (data *OpDataMap) marshal() (msg []byte, err error) {
@@ -68,12 +69,27 @@ func (data *OpDataMap) marshal() (msg []byte, err error) {
   return
 }
 
-func (data *OpDataMap) unmarshal() (err error) {
+func (data *OpDataMap) unmarshal(msg []byte) (err error) {
+  data.nonce = msg[0:12]
+  data.protocol = Protocol(msg[12])
+  data.internalPort = binary.BigEndian.Uint16(msg[16:18])
+  data.externalPort = binary.BigEndian.Uint16(msg[18:20])
+  data.externalIP = net.IP(msg[20:36])
   return
 }
 
 //Need to add support for PCP options later.
 func (c *Client) AddPortMapping(protocol Protocol, internalPort, requestedExternalPort uint16, requestedAddr net.IP, lifetime uint32) (err error) {
+  //Need to check mapping does not already exist. Refresh if it does.
+  if _, exists := c.Mappings[internalPort]; exists {
+    //Mapping already exists
+    //Should force refresh the mapping. (Using the lifetime parameter if passed.)
+    return
+  }
+  nonce, err := genRandomBytes(12)
+  if err != nil {
+    return ErrNonceGeneration
+  }
   mapData := &OpDataMap{nil,protocol,internalPort,requestedExternalPort,requestedAddr}
   mapDataBytes, err := mapData.marshal()
   if err != nil {
@@ -92,7 +108,16 @@ func (c *Client) AddPortMapping(protocol Protocol, internalPort, requestedExtern
   if err != nil {
     return ErrNetworkSend
   }
-  //Need to add provisional port mapping to client struct here.
+  //Add provisional mapping. Response will set actual port, active and expiryTime
+  mapping := PortMap{nonce,protocol,internalPort,requestedExternalPort,requestedAddr,false,lifetime,0}
+  c.Mappings[internalPort] = mapping
+  return
+}
+
+func (c *Client) DeletePortMapping(internalPort uint16) (err error) {
+  //Should send an AddPortMapping request, reusing the nonce, but setting the lifetime to zero
+  //Mapping should set active = false as opposed to deleting. See section 15 of rfc6887 wrt
+  //allowing clients with same nonce to reclaim previously deleted mappings (8th paragraph)
   return
 }
 
