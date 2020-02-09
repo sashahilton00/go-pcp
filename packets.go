@@ -106,8 +106,6 @@ func addPadding(data []byte) (out []byte) {
 
 //The logic in here is a mess, need to redo to deal with endianness
 func (req *RequestPacket) marshal() (msg []byte, err error) {
-  //The current PCP version number
-  msg = append(msg, 2)
   opMap := bitmap.NewSlice(8)
   //Bits at indexes 0-6 set from opCode int.
   for i := 0; i < 7; i++ {
@@ -116,40 +114,56 @@ func (req *RequestPacket) marshal() (msg []byte, err error) {
   }
   //Bit at index 7 is 0 as it is a request
   bitmap.Set(opMap, 7, false)
-  msg = append(msg, opMap...)
-  //Next 2 bytes (16 bits) reserved
+
   empty := make([]byte, 2)
-  msg = append(msg, empty...)
-  //lifetime is an unsigned 32 bit integer in seconds
+
   lifetimeBytes := make([]byte, 4)
   binary.BigEndian.PutUint32(lifetimeBytes, req.lifetime)
-  msg = append(msg, lifetimeBytes...)
-  //client ip is always a 16 byte (128 bit) block
+
   addr := make([]byte, 16)
   log.Debugf("Client addr: %x\n", req.clientAddr)
   copy(addr, req.clientAddr)
-  msg = append(msg, addr...)
-  //opData is the opcode-specific data
-  msg = append(msg, req.opData...)
-  //Encode and append the options
+
   var options []byte
   log.Debugf("Number of options in request: %d", len(req.pcpOptions))
   for _, option := range req.pcpOptions {
-    var optionBytes []byte
-    optionBytes = append(optionBytes, byte(option.opCode))
     //8 bits reserved
     empty := make([]byte, 1)
-    optionBytes = append(optionBytes, empty...)
-    //length of option data payload
-    optionBytes = append(optionBytes, uint8(len(option.data)))
-    optionBytes = append(optionBytes, option.data...)
+
+    optionSlices := [][]byte{
+      []byte{byte(option.opCode)},
+      empty,
+      //length of option data payload
+      []byte{byte(len(option.data))},
+      option.data,
+    }
+
+    optionBytes := concatCopyPreAllocate(optionSlices)
     //Pad option data to multiple of 4
     optionBytes = addPadding(optionBytes)
+
     options = append(options, optionBytes...)
   }
-  msg = append(msg, options...)
+
+  var slices = [][]byte{
+    //The current PCP version number
+    []byte{2},
+    opMap,
+    //Next 2 bytes (16 bits) reserved
+    empty,
+    //lifetime is an unsigned 32 bit integer in seconds
+    lifetimeBytes,
+    //client ip is always a 16 byte (128 bit) block
+    addr,
+    //opData is the opcode-specific data
+    req.opData,
+    options,
+  }
+  
+  msg = concatCopyPreAllocate(slices)
   //Pad message to multiple of 4
   msg = addPadding(msg)
+
   if len(msg) > 1100 {
     return nil, ErrPacketTooLarge
   }

@@ -56,6 +56,7 @@ func (data *OpDataMap) marshal() (msg []byte, err error) {
   if data.internalPort == 0 {
     return nil, ErrPortNotSpecified
   }
+
   if data.nonce == nil {
     nonce, err := genRandomBytes(12)
     if err != nil {
@@ -63,21 +64,30 @@ func (data *OpDataMap) marshal() (msg []byte, err error) {
     }
     data.nonce = nonce
   }
-  msg = append(msg, data.nonce...)
-  msg = append(msg, byte(data.protocol))
+
   empty := make([]byte, 3)
-  msg = append(msg, empty...)
+
   internalPortBytes := make([]byte, 2)
   binary.BigEndian.PutUint16(internalPortBytes, data.internalPort)
-  msg = append(msg, internalPortBytes...)
+
   externalPortBytes := make([]byte, 2)
   binary.BigEndian.PutUint16(externalPortBytes, data.externalPort)
-  msg = append(msg, externalPortBytes...)
+
   addr := make([]byte, 16)
   if data.externalIP != nil {
     copy(addr, data.externalIP)
   }
-  msg = append(msg, addr...)
+
+  var slices = [][]byte{
+    data.nonce,
+    []byte{byte(data.protocol)},
+    empty,
+    internalPortBytes,
+    externalPortBytes,
+    addr,
+  }
+
+  msg = concatCopyPreAllocate(slices)
   return
 }
 
@@ -137,6 +147,19 @@ func genRandomBytes(size int) (blk []byte, err error) {
     blk = make([]byte, size)
     _, err = rand.Read(blk)
     return
+}
+
+func concatCopyPreAllocate(slices [][]byte) []byte {
+    var totalLen int
+    for _, s := range slices {
+        totalLen += len(s)
+    }
+    tmp := make([]byte, totalLen)
+    var i int
+    for _, s := range slices {
+        i += copy(tmp[i:], s)
+    }
+    return tmp
 }
 
 func (c *Client) epochValid(clientTime int64, serverTime uint32) bool {
