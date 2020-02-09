@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/rand"
 	"encoding/binary"
 	"net"
 )
@@ -51,10 +50,10 @@ type Client struct {
 	conn      *net.UDPConn
 	cancelled bool
 	epoch     *ClientEpoch
+	nonce        []byte
 }
 
 type OpDataMap struct {
-	nonce        []byte
 	protocol     Protocol
 	internalPort uint16
 	externalPort uint16 //This is only a suggestion in request. Server ultimately decides.
@@ -62,7 +61,6 @@ type OpDataMap struct {
 }
 
 type PortMap struct {
-	nonce        []byte
 	protocol     Protocol
 	internalPort uint16
 	externalPort uint16
@@ -72,19 +70,19 @@ type PortMap struct {
 	expireTime   int64
 }
 
-func (data *OpDataMap) marshal() (msg []byte, err error) {
+func (data *OpDataMap) marshal(nonce []byte) (msg []byte, err error) {
 	//Potentially relax requirement for non-zero. Appears to be valid in the spec when combined with ProtocolAll.
 	if data.internalPort == 0 {
 		return nil, ErrPortNotSpecified
 	}
 
-	if data.nonce == nil {
+	/*if data.nonce == nil {
 		nonce, err := genRandomBytes(12)
 		if err != nil {
 			return nil, ErrNonceGeneration
 		}
 		data.nonce = nonce
-	}
+	}*/
 
 	empty := make([]byte, 3)
 
@@ -100,7 +98,7 @@ func (data *OpDataMap) marshal() (msg []byte, err error) {
 	}
 
 	var slices = [][]byte{
-		data.nonce,
+		nonce,
 		[]byte{byte(data.protocol)},
 		empty,
 		internalPortBytes,
@@ -113,7 +111,6 @@ func (data *OpDataMap) marshal() (msg []byte, err error) {
 }
 
 func (data *OpDataMap) unmarshal(msg []byte) (err error) {
-	data.nonce = msg[0:12]
 	data.protocol = Protocol(msg[12])
 	data.internalPort = binary.BigEndian.Uint16(msg[16:18])
 	data.externalPort = binary.BigEndian.Uint16(msg[18:20])
@@ -129,12 +126,12 @@ func (c *Client) AddPortMapping(protocol Protocol, internalPort, requestedExtern
 		//Should force refresh the mapping. (Using the lifetime parameter if passed.)
 		return
 	}
-	nonce, err := genRandomBytes(12)
+	/*nonce, err := genRandomBytes(12)
 	if err != nil {
 		return ErrNonceGeneration
-	}
-	mapData := &OpDataMap{nil, protocol, internalPort, requestedExternalPort, requestedAddr}
-	mapDataBytes, err := mapData.marshal()
+	}*/
+	mapData := &OpDataMap{protocol, internalPort, requestedExternalPort, requestedAddr}
+	mapDataBytes, err := mapData.marshal(c.nonce)
 	if err != nil {
 		return ErrMapDataPayload
 	}
@@ -152,7 +149,7 @@ func (c *Client) AddPortMapping(protocol Protocol, internalPort, requestedExtern
 		return ErrNetworkSend
 	}
 	//Add provisional mapping. Response will set actual port, active and expiryTime
-	mapping := PortMap{nonce, protocol, internalPort, requestedExternalPort, requestedAddr, false, lifetime, 0}
+	mapping := PortMap{protocol, internalPort, requestedExternalPort, requestedAddr, false, lifetime, 0}
 	c.Mappings[internalPort] = mapping
 	return
 }
@@ -161,12 +158,6 @@ func (c *Client) DeletePortMapping(internalPort uint16) (err error) {
 	//Should send an AddPortMapping request, reusing the nonce, but setting the lifetime to zero
 	//Mapping should set active = false as opposed to deleting. See section 15 of rfc6887 wrt
 	//allowing clients with same nonce to reclaim previously deleted mappings (8th paragraph)
-	return
-}
-
-func genRandomBytes(size int) (blk []byte, err error) {
-	blk = make([]byte, size)
-	_, err = rand.Read(blk)
 	return
 }
 

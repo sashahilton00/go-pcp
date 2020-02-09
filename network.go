@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/rand"
 	"fmt"
 	"net"
 	"time"
@@ -16,13 +17,40 @@ func NewClient(gatewayAddr net.IP) (client *Client, err error) {
 		return nil, err
 	}
 	eventChan := make(chan Event)
-	clientEpoch := &ClientEpoch{}
+
 	mappings := make(map[uint16]PortMap)
-	client = &Client{gatewayAddr, eventChan, mappings, conn, false, clientEpoch}
+
+	clientEpoch := &ClientEpoch{}
+
+	nonce, err := genRandomBytes(12)
+	if err != nil {
+		return nil, ErrNonceGeneration
+	}
+
+	client = &Client{gatewayAddr, eventChan, mappings, conn, false, clientEpoch, nonce}
 
 	go client.handleMessage()
-	//Need to create mapping refresh loop
+	//Need to create mapping refresh loop. Should only refresh mappings with active = true by default.
+	go client.checkMappings()
 	return client, nil
+}
+
+func (c *Client) checkMappings() (err error) {
+	for {
+		for k, v := range c.Mappings {
+			//If mapping is active and due to expire within 10 minutes, refresh
+			//NB: This is not spec compliant - read 11.2.1 of RFC6887 for timing spec.
+			//Will be implemented at a later date
+			//Probably easiest to add a nextRefresh parameter to PortMap to accomodate timing.
+			t := time.Now()
+			if v.active && v.expireTime <= t.Unix() + 600 {
+				log.Debugf("Refreshing mapping for port: %d", k)
+				//c.RefreshMapping()
+			}
+		}
+		//Run once a second
+		time.Sleep(time.Second)
+	}
 }
 
 func (c *Client) handleMessage() (err error) {
@@ -49,6 +77,7 @@ func (c *Client) handleMessage() (err error) {
 				msg = msg[:len]
 				ch <- msg
 			}
+			time.Sleep(10 * time.Millisecond)
 		}
 	}()
 	for {
@@ -99,6 +128,7 @@ func (c *Client) handleMessage() (err error) {
 				log.Debugf("Epoch valid. Server Time: %d, Client Time: %d", res.epoch, t.Unix())
 			}
 		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
@@ -112,4 +142,10 @@ func (c *Client) Close() {
 	c.conn.Close()
 	close(c.Event)
 	c.cancelled = true
+}
+
+func genRandomBytes(size int) (blk []byte, err error) {
+	blk = make([]byte, size)
+	_, err = rand.Read(blk)
+	return
 }
