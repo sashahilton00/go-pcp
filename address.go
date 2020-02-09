@@ -1,32 +1,32 @@
 package main
 
-import(
-  "net"
+import (
+	"net"
 
-  "github.com/jackpal/gateway"
+	"github.com/jackpal/gateway"
 )
 
 func GetGatewayAddress() (addr net.IP, err error) {
-  addr, err = gateway.DiscoverGateway()
-  if err != nil {
-    return nil, ErrGatewayNotFound
-  }
-  return addr, nil
+	addr, err = gateway.DiscoverGateway()
+	if err != nil {
+		return nil, ErrGatewayNotFound
+	}
+	return addr, nil
 }
 
 func GetExternalAddress() {
-  // Placeholder:
-  // Will create a short mapping with PCP server and return the address returned
-  // by the server in the response packet. Use UDP/9 (Discard) as short mapping.
+	// Placeholder:
+	// Will create a short mapping with PCP server and return the address returned
+	// by the server in the response packet. Use UDP/9 (Discard) as short mapping.
 }
 
 func GetInternalAddress() (addr net.IP, err error) {
-  gatewayAddr, err := GetGatewayAddress()
-  if err != nil {
-    return nil, err
-  }
+	gatewayAddr, err := GetGatewayAddress()
+	if err != nil {
+		return nil, err
+	}
 
-  ifaces, err := net.Interfaces()
+	ifaces, err := net.Interfaces()
 	if err != nil {
 		return nil, err
 	}
