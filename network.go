@@ -39,19 +39,14 @@ func NewClient(gatewayAddr net.IP) (client *Client, err error) {
   clientEpoch := &ClientEpoch{}
   mappings := make(map[uint16]PortMap)
   client = &Client{gatewayAddr,eventChan,mappings,conn,false,clientEpoch}
-  //Need to set up event handler loop here for incoming messages.
-  go client.readMessage()
+
+  go client.handleMessage()
   //Need to create mapping refresh loop
   return client, nil
 }
 
-//Should rename to handleMessage
-func (c *Client) readMessage() (err error) {
-  //Listens for messages from UDP conn.
-  //Creates Event depending on message.
-  //Emit event to channel.
+func (c *Client) handleMessage() (err error) {
   ch := make(chan []byte)
-  // Read incoming UDP messages
   go func() {
     for {
       if c.cancelled {
@@ -60,7 +55,6 @@ func (c *Client) readMessage() (err error) {
       }
     	select {
     	case <-time.After(10 * time.Millisecond):
-    		// do something
         msg := make([]byte, 2048)
         len, from, err := c.conn.ReadFromUDP(msg)
         if err != nil {
@@ -111,7 +105,6 @@ func (c *Client) readMessage() (err error) {
         } else {
           log.Warnf("Port mapping was not found in client cache. Ignoring. Port: %d", data.internalPort)
         }
-        //Need to emit event here.
       case OpPeer:
         //OpPeer case
       default:
