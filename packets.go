@@ -76,8 +76,7 @@ type PCPOption struct {
 }
 
 type RequestPacket struct {
-  //version int8 //Probably not necessary - just add when marshalling.
-  opCode OpCode //Should convert this to take an enum.
+  opCode OpCode
   lifetime uint32
   clientAddr net.IP
   opData []byte
@@ -104,7 +103,6 @@ func addPadding(data []byte) (out []byte) {
   return out
 }
 
-//The logic in here is a mess, need to redo to deal with endianness
 func (req *RequestPacket) marshal() (msg []byte, err error) {
   opMap := bitmap.NewSlice(8)
   //Bits at indexes 0-6 set from opCode int.
@@ -159,7 +157,7 @@ func (req *RequestPacket) marshal() (msg []byte, err error) {
     req.opData,
     options,
   }
-  
+
   msg = concatCopyPreAllocate(slices)
   //Pad message to multiple of 4
   msg = addPadding(msg)
@@ -180,6 +178,7 @@ func (res *ResponsePacket) unmarshal(data []byte) (err error) {
   if !bitmap.GetBit(data[1], 7) {
     return ErrWrongPacketType
   }
+
   var opCode byte
   for i := 0; i < 7; i++ {
     opCodeBit := bitmap.GetBit(data[1], i)
@@ -192,6 +191,7 @@ func (res *ResponsePacket) unmarshal(data []byte) (err error) {
   log.Debugf("Response Lifetime: %d", res.lifetime)
   res.epoch = binary.BigEndian.Uint32(data[8:12])
   log.Debugf("Response Epoch: %d", res.epoch)
+
   var opDataLen int
   //This could be trimmed down - left for clarity.
   switch res.opCode {
@@ -204,13 +204,14 @@ func (res *ResponsePacket) unmarshal(data []byte) (err error) {
   default:
     opDataLen = 0
   }
+
   log.Debugf("Opcode: %s\n", res.opCode)
   log.Debugf("Op data len: %d\n", opDataLen)
   if opDataLen > 0 {
     res.opData = data[24:24+opDataLen]
   }
+
   currentOffset := 24 + opDataLen
-  //Need to implement PCP options
   for currentOffset < len(data) {
     log.Debugf("Current offset: %d\n", currentOffset)
     log.Debugf("Remaining data: %x\n", data[currentOffset:])
@@ -236,5 +237,6 @@ func (res *ResponsePacket) unmarshal(data []byte) (err error) {
       res.pcpOptions = append(res.pcpOptions, option)
     }
   }
+
   return
 }
