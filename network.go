@@ -9,8 +9,8 @@ import(
 )
 
 type Event struct {
-  Action string
-  Data []byte
+  Action Action
+  Data interface{}
 }
 
 type ClientEpoch struct {
@@ -98,14 +98,16 @@ func (c *Client) readMessage() (err error) {
           log.Errorf("Could not parse Map OpData: %s\n", err)
           continue
         }
-        if val, ok := c.Mappings[data.internalPort]; ok {
-          val.externalPort = data.externalPort
-          val.externalIP = data.externalIP
-          val.active = true
-          val.lifetime = res.lifetime
+        if m, ok := c.Mappings[data.internalPort]; ok {
+          m.externalPort = data.externalPort
+          m.externalIP = data.externalIP
+          m.active = true
+          m.lifetime = res.lifetime
           t := time.Now()
-          val.expireTime = t.Unix() + int64(res.lifetime)
-          c.Mappings[data.internalPort] = val
+          m.expireTime = t.Unix() + int64(res.lifetime)
+
+          c.Mappings[data.internalPort] = m
+          c.Event <- Event{ActionReceivedMapping,m}
         } else {
           log.Warnf("Port mapping was not found in client cache. Ignoring. Port: %d", data.internalPort)
         }

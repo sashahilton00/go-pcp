@@ -6,13 +6,25 @@ import(
   "net"
 )
 
+type Action uint8
 //At a later date it would be worth integrating with the IANA package to be fully compliant.
 //For now, just implement common protocols
 type Protocol uint8
 
+func (a Action) String() string {
+    return [...]string{"ActionReceivedAnnounce","ActionReceivedMapping","ActionReceivedPeer"}[a]
+}
+
 func (p Protocol) String() string {
     return [...]string{"ProtocolAll","ProtocolTCP","ProtocolUDP"}[p]
 }
+
+//Not the greatest naming, but will do for now.
+const(
+  ActionReceivedAnnounce = iota
+  ActionReceivedMapping
+  ActionReceivedPeer
+)
 
 const(
   ProtocolAll Protocol = 0

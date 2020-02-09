@@ -33,6 +33,10 @@ func main() {
   }
   log.Debugf("%+v\n",client)
   for {
+    select {
+    case event := <-client.Event:
+      log.Infof("Received event - Action: %s, Data: %+v", event.Action, event.Data)
+    }
     time.Sleep(time.Millisecond)
   }
 }
