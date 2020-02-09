@@ -32,6 +32,26 @@ const(
   ProtocolUDP Protocol = 17
 )
 
+type Event struct {
+  Action Action
+  Data interface{}
+}
+
+type ClientEpoch struct {
+  prevServerTime uint32
+  prevClientTime int64
+}
+
+type Client struct {
+  GatewayAddr net.IP
+  Event chan Event
+  Mappings map[uint16]PortMap
+
+  conn *net.UDPConn
+  cancelled bool
+  epoch *ClientEpoch
+}
+
 type OpDataMap struct {
   nonce []byte
   protocol Protocol

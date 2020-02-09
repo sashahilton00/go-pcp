@@ -8,26 +8,6 @@ import(
   log "github.com/sirupsen/logrus"
 )
 
-type Event struct {
-  Action Action
-  Data interface{}
-}
-
-type ClientEpoch struct {
-  prevServerTime uint32
-  prevClientTime int64
-}
-
-type Client struct {
-  GatewayAddr net.IP
-  Event chan Event
-  Mappings map[uint16]PortMap
-
-  conn *net.UDPConn
-  cancelled bool
-  epoch *ClientEpoch
-}
-
 //Potentially add deviceAddr at a later stage
 func NewClient(gatewayAddr net.IP) (client *Client, err error) {
   udpAddr := &net.UDPAddr{IP: gatewayAddr, Port: 5351}
