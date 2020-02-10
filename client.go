@@ -193,7 +193,7 @@ func (c *Client) DeletePortMapping(internalPort uint16) (err error) {
 	//Mapping should set active = false as opposed to deleting. See section 15 of rfc6887 wrt
 	//allowing clients with same nonce to reclaim previously deleted mappings (8th paragraph)
 	if m, exists := c.Mappings[internalPort]; exists {
-		err = c.AddPortMapping(m.protocol, m.internalPort, m.externalPort, m.externalIP, 0, false)
+		err = c.AddPortMapping(m.protocol, m.internalPort, m.externalPort, m.externalIP, 0, true)
 	}
 	return
 }
