@@ -38,12 +38,9 @@ func NewClient(gatewayAddr net.IP) (client *Client, err error) {
 func (c *Client) checkMappings() (err error) {
 	for {
 		for k, v := range c.Mappings {
-			//If mapping is active and due to expire within 10 minutes, refresh
-			//NB: This is not spec compliant - read 11.2.1 of RFC6887 for timing spec.
-			//Will be implemented at a later date
-			//Probably easiest to add a nextRefresh parameter to PortMap to accomodate timing.
 			t := time.Now()
-			if v.active && v.expireTime <= t.Unix() + 600 {
+			log.Debugf("Time to expiry: %d", v.refresh.time - t.Unix())
+			if v.active && v.refresh.time <= t.Unix() {
 				log.Debugf("Refreshing mapping for port: %d", k)
 				err = c.RefreshPortMapping(v.internalPort, v.lifetime)
 				if err != nil {
@@ -92,6 +89,8 @@ func (c *Client) handleMessage() (err error) {
 				log.Debug(ErrWrongPacketType)
 				continue
 			}
+			//Need to add check for resultcode here and handle errors.
+			//Specifically, on port refresh error, need to update refresh time.
 			//Process ResponsePacket here and send events.
 			switch res.opCode {
 			case OpAnnounce:
@@ -105,12 +104,14 @@ func (c *Client) handleMessage() (err error) {
 					continue
 				}
 				if m, ok := c.Mappings[data.internalPort]; ok {
+					//Update existing struct
 					m.externalPort = data.externalPort
 					m.externalIP = data.externalIP
 					m.active = true
 					m.lifetime = res.lifetime
-					t := time.Now()
-					m.expireTime = t.Unix() + int64(res.lifetime)
+
+					m.refresh.attempt = 0
+					m.refresh.time = getRefreshTime(0, res.lifetime)
 
 					c.Mappings[data.internalPort] = m
 					c.Event <- Event{ActionReceivedMapping, m}

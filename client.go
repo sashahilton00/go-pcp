@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/binary"
+	"math/rand"
 	"net"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -62,6 +64,11 @@ type OpDataMap struct {
 	externalIP   net.IP //Also only a suggestion
 }
 
+type RefreshTime struct {
+	attempt int
+	time int64
+}
+
 type PortMap struct {
 	protocol     Protocol
 	internalPort uint16
@@ -69,7 +76,7 @@ type PortMap struct {
 	externalIP   net.IP
 	active       bool
 	lifetime     uint32
-	expireTime   int64
+	refresh      RefreshTime
 }
 
 func (data *OpDataMap) marshal(nonce []byte) (msg []byte, err error) {
@@ -113,11 +120,6 @@ func (data *OpDataMap) unmarshal(msg []byte) (err error) {
 }
 
 func (c *Client) RefreshPortMapping(internalPort uint16, lifetime uint32) (err error) {
-	//As currently implemented, if this is <=600, the server is going to be spammed with
-	//requests. This will be resolved when proper refresh timing is implemented.
-	if lifetime == 0 {
-		lifetime = DefaultLifetimeSeconds
-	}
 	if m, exists := c.Mappings[internalPort]; exists {
 		err = c.AddPortMapping(m.protocol, m.internalPort, m.externalPort, m.externalIP, lifetime)
 	} else {
@@ -128,11 +130,14 @@ func (c *Client) RefreshPortMapping(internalPort uint16, lifetime uint32) (err e
 
 //Need to add support for PCP options later.
 func (c *Client) AddPortMapping(protocol Protocol, internalPort, requestedExternalPort uint16, requestedAddr net.IP, lifetime uint32) (err error) {
-	//Need to check mapping does not already exist. Refresh if it does.
 	if _, exists := c.Mappings[internalPort]; exists {
 		//Mapping already exists
 		//Should force refresh the mapping. (Using the lifetime parameter if passed.)
 		log.Debugf("mapping for port %d exists, refreshing", internalPort)
+	}
+	//Set minimum lifetime to 2 mins. Less than this is pointless.
+	if lifetime < 120 {
+		lifetime = 120
 	}
 	mapData := &OpDataMap{protocol, internalPort, requestedExternalPort, requestedAddr}
 	mapDataBytes, err := mapData.marshal(c.nonce)
@@ -152,10 +157,32 @@ func (c *Client) AddPortMapping(protocol Protocol, internalPort, requestedExtern
 	if err != nil {
 		return ErrNetworkSend
 	}
-	//Add provisional mapping. Response will set actual port, active and expiryTime
-	mapping := PortMap{protocol, internalPort, requestedExternalPort, requestedAddr, false, lifetime, 0}
+	//Add provisional mapping. Response will set actual port, active and refresh
+	rt := getRefreshTime(0, lifetime)
+	refresh := RefreshTime{0, rt}
+	mapping := PortMap{protocol, internalPort, requestedExternalPort, requestedAddr, false, lifetime, refresh}
 	c.Mappings[internalPort] = mapping
 	return
+}
+
+func getRefreshTime(attempt int, lifetime uint32) int64 {
+	//Reset seed on each call to avoid non-pseudorandom intervals over prolonged usage
+	rand.Seed(time.Now().UnixNano())
+	t := time.Now()
+	//See 11.2.1 of RFC6887
+	max := t.Unix() + (5 * int64(lifetime)) / (1 << (attempt + 3))
+	min := t.Unix() + (int64(lifetime)) / (1 << (attempt + 1))
+	var interval int64
+	if (max - min) > 0 {
+		interval = rand.Int63n(max - min) + min
+	}
+	if interval < 4 {
+		interval = t.Unix() + 4
+	}
+	log.Debug(max, min, max - min)
+	log.Debugf("max - current: %d min - current: %d random int: %d, lifetime: %d", max - t.Unix(), min - t.Unix(), interval - t.Unix(), lifetime)
+	log.Debugf("Refresh max: %d Refresh min: %d Time now: %d Interval: %d", max, min, t.Unix(), interval)
+	return interval
 }
 
 func (c *Client) DeletePortMapping(internalPort uint16) (err error) {
