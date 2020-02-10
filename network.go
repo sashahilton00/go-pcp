@@ -11,7 +11,11 @@ import (
 )
 
 //Potentially add deviceAddr at a later stage
-func NewClient(gatewayAddr net.IP) (client *Client, err error) {
+func NewClient() (client *Client, err error) {
+	gatewayAddr, err := client.GetGatewayAddress()
+	if err != nil {
+		return nil, err
+	}
 	udpAddr := &net.UDPAddr{IP: gatewayAddr, Port: 5351}
 	conn, err := net.DialUDP("udp", nil, udpAddr)
 	if err != nil {

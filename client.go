@@ -147,7 +147,7 @@ func (c *Client) AddPortMapping(protocol Protocol, internalPort, requestedExtern
 	if err != nil {
 		return ErrMapDataPayload
 	}
-	addr, err := GetInternalAddress()
+	addr, err := c.GetInternalAddress()
 	if err != nil {
 		return ErrNoInternalAddress
 	}

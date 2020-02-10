@@ -8,8 +8,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func GetGatewayAddress() (addr net.IP, err error) {
+func (c *Client) GetGatewayAddress() (addr net.IP, err error) {
 	addr, err = gateway.DiscoverGateway()
+	//Only during testing
+	addr = net.ParseIP("127.0.0.1")
 	if err != nil {
 		return nil, ErrGatewayNotFound
 	}
@@ -42,8 +44,8 @@ func (c *Client) GetExternalAddress() (addr net.IP, err error) {
 	return
 }
 
-func GetInternalAddress() (addr net.IP, err error) {
-	gatewayAddr, err := GetGatewayAddress()
+func (c *Client) GetInternalAddress() (addr net.IP, err error) {
+	gatewayAddr, err := c.GetGatewayAddress()
 	if err != nil {
 		return nil, err
 	}

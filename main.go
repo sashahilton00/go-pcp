@@ -12,21 +12,20 @@ func init() {
 }
 
 func main() {
-	addr, err := GetInternalAddress()
+	var client *Client
+	client, err := NewClient()
+	if err != nil {
+		log.Error(err)
+	}
+	addr, err := client.GetInternalAddress()
 	if err != nil {
 		log.Fatal(err)
 	}
-	gatewayAddr, err := GetGatewayAddress()
+	gatewayAddr, err := client.GetGatewayAddress()
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Infof("Internal IP: %s Gateway IP: %s", addr, gatewayAddr)
-	//Only temporary, for testing with local server
-	client, err := NewClient(net.ParseIP("127.0.0.1"))
-	//client, err := NewClient(gatewayAddr)
-	if err != nil {
-		log.Error(err)
-	}
 	err = client.AddPortMapping(ProtocolTCP, 8080, 0, net.ParseIP("127.0.0.1"), DefaultLifetimeSeconds, false)
 	if err == nil {
 		log.Debug("successfully sent port map request")
