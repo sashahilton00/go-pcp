@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"net"
+	"os"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -30,7 +31,6 @@ func NewClient(gatewayAddr net.IP) (client *Client, err error) {
 	client = &Client{gatewayAddr, eventChan, mappings, conn, false, clientEpoch, nonce}
 
 	go client.handleMessage()
-	//Need to create mapping refresh loop. Should only refresh mappings with active = true by default.
 	go client.checkMappings()
 	return client, nil
 }
@@ -76,7 +76,7 @@ func (c *Client) handleMessage() (err error) {
 				msg = msg[:len]
 				ch <- msg
 			}
-			time.Sleep(10 * time.Millisecond)
+			time.Sleep(time.Millisecond)
 		}
 	}()
 	for {
@@ -89,39 +89,35 @@ func (c *Client) handleMessage() (err error) {
 				continue
 			}
 			//Need to add check for resultcode here and handle errors.
-			//Specifically, on port refresh error, need to update refresh time.
-			//Process ResponsePacket here and send events.
-			switch res.opCode {
-			case OpAnnounce:
-				//OpAnnounce case
-			case OpMap:
-				//OpMap case
-				var data OpDataMap
-				err = data.unmarshal(res.opData)
-				if err != nil {
-					log.Errorf("Could not parse Map OpData: %s\n", err)
-					continue
-				}
-				if m, ok := c.Mappings[data.internalPort]; ok {
-					//Update existing struct
-					m.externalPort = data.externalPort
-					m.externalIP = data.externalIP
-					m.active = true
-					m.lifetime = res.lifetime
+			switch res.resultCode {
+			case ResultSuccess:
+				//Process ResponsePacket here and send events.
+				switch res.opCode {
+				case OpAnnounce:
+					//OpAnnounce case
+				case OpMap:
+					//OpMap case
+					var data OpDataMap
+					err = data.unmarshal(res.opData)
+					if err != nil {
+						log.Errorf("Could not parse Map OpData: %s\n", err)
+						continue
+					}
 
-					m.refresh.attempt = 0
-					m.refresh.time = getRefreshTime(0, res.lifetime)
-
+					rt := RefreshTime{0,getRefreshTime(0, res.lifetime)}
+					m := PortMap{data.protocol,data.internalPort,data.externalPort,data.externalIP,true,res.lifetime,rt}
 					c.Mappings[data.internalPort] = m
 					c.Event <- Event{ActionReceivedMapping, m}
-				} else {
-					log.Warnf("Port mapping was not found in client cache. Ignoring. Port: %d", data.internalPort)
+				case OpPeer:
+					//OpPeer case
+				default:
+					log.Warnf("Unrecognised OpCode: %d", res.opCode)
 				}
-			case OpPeer:
-				//OpPeer case
-			default:
-				log.Warnf("Unrecognised OpCode: %d", res.opCode)
+			case ResultUnsupportedVersion:
+					log.Fatal("Server uses an unsupported PCP version.")
+					os.Exit(1)
 			}
+
 			t := time.Now()
 			valid := c.epochValid(t.Unix(), res.epoch)
 			if !valid {

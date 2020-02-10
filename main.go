@@ -31,6 +31,12 @@ func main() {
 	if err == nil {
 		log.Debug("successfully sent port map request")
 	}
+	addr, err = client.GetExternalAddress()
+	if err == nil {
+		log.Infof("External Addr: %s", addr)
+	} else {
+		log.Errorf("err retrieving address: %s", err)
+	}
 	log.Debugf("%+v\n", client)
 	for {
 		select {

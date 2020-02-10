@@ -2,8 +2,10 @@ package main
 
 import (
 	"net"
+	"time"
 
 	"github.com/jackpal/gateway"
+	log "github.com/sirupsen/logrus"
 )
 
 func GetGatewayAddress() (addr net.IP, err error) {
@@ -14,10 +16,30 @@ func GetGatewayAddress() (addr net.IP, err error) {
 	return addr, nil
 }
 
-func GetExternalAddress() {
-	// Placeholder:
+func (c *Client) GetExternalAddress() (addr net.IP, err error) {
 	// Will create a short mapping with PCP server and return the address returned
 	// by the server in the response packet. Use UDP/9 (Discard) as short mapping.
+	err = c.AddPortMapping(ProtocolUDP, 9, 0, net.ParseIP("127.0.0.1"), 30, true)
+	if err != nil {
+		log.Error(err)
+		return nil, err
+	}
+	L:
+		for {
+			select {
+			case event := <-c.Event:
+				if event.Action == ActionReceivedMapping {
+					m := event.Data.(PortMap)
+					if m.internalPort == 9 {
+						addr = m.externalIP
+						delete(c.Mappings,9)
+						break L
+					}
+				}
+			}
+			time.Sleep(time.Millisecond)
+		}
+	return
 }
 
 func GetInternalAddress() (addr net.IP, err error) {

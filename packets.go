@@ -118,7 +118,7 @@ func (req *RequestPacket) marshal() (msg []byte, err error) {
 	binary.BigEndian.PutUint32(lifetimeBytes, req.lifetime)
 
 	addr := make([]byte, 16)
-	log.Debugf("Client addr: %x\n", req.clientAddr)
+	log.Debugf("Client addr: %s\n", req.clientAddr)
 	copy(addr, req.clientAddr)
 
 	var options []byte
