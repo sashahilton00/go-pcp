@@ -17,6 +17,7 @@ func main() {
 	if err != nil {
 		log.Error(err)
 	}
+
 	addr, err := client.GetInternalAddress()
 	if err != nil {
 		log.Fatal(err)
@@ -26,17 +27,19 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Infof("Internal IP: %s Gateway IP: %s", addr, gatewayAddr)
+
 	err = client.AddPortMapping(ProtocolTCP, 8080, 0, net.ParseIP("127.0.0.1"), DefaultLifetimeSeconds, false)
 	if err == nil {
 		log.Debug("successfully sent port map request")
 	}
+
 	addr, err = client.GetExternalAddress()
 	if err == nil {
 		log.Infof("External Addr: %s", addr)
 	} else {
 		log.Errorf("err retrieving address: %s", err)
 	}
-	log.Debugf("%+v\n", client)
+	
 	for {
 		select {
 		case event := <-client.Event:
