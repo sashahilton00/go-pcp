@@ -89,7 +89,12 @@ func (c *Client) handleMessage() (err error) {
 			var res ResponsePacket
 			err = res.unmarshal(msg)
 			if err != nil {
-				log.Debug(ErrWrongPacketType)
+				if err == ErrUnsupportedVersion {
+					log.Fatal("Server uses an unsupported PCP version.")
+					os.Exit(1)
+				} else {
+					log.Error(err)
+				}
 				continue
 			}
 			//Need to add check for resultcode here and handle errors.
