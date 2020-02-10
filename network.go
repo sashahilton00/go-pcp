@@ -45,7 +45,10 @@ func (c *Client) checkMappings() (err error) {
 			t := time.Now()
 			if v.active && v.expireTime <= t.Unix() + 600 {
 				log.Debugf("Refreshing mapping for port: %d", k)
-				//c.RefreshMapping()
+				err = c.RefreshPortMapping(v.internalPort, v.lifetime)
+				if err != nil {
+					log.Errorf("Error occured whilst refreshing mapping: %s", err)
+				}
 			}
 		}
 		//Run once a second

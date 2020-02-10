@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/binary"
 	"net"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type Action uint8
@@ -76,14 +78,6 @@ func (data *OpDataMap) marshal(nonce []byte) (msg []byte, err error) {
 		return nil, ErrPortNotSpecified
 	}
 
-	/*if data.nonce == nil {
-		nonce, err := genRandomBytes(12)
-		if err != nil {
-			return nil, ErrNonceGeneration
-		}
-		data.nonce = nonce
-	}*/
-
 	empty := make([]byte, 3)
 
 	internalPortBytes := make([]byte, 2)
@@ -118,18 +112,28 @@ func (data *OpDataMap) unmarshal(msg []byte) (err error) {
 	return
 }
 
+func (c *Client) RefreshPortMapping(internalPort uint16, lifetime uint32) (err error) {
+	//As currently implemented, if this is <=600, the server is going to be spammed with
+	//requests. This will be resolved when proper refresh timing is implemented.
+	if lifetime == 0 {
+		lifetime = DefaultLifetimeSeconds
+	}
+	if m, exists := c.Mappings[internalPort]; exists {
+		err = c.AddPortMapping(m.protocol, m.internalPort, m.externalPort, m.externalIP, lifetime)
+	} else {
+		err = ErrMappingNotFound
+	}
+	return
+}
+
 //Need to add support for PCP options later.
 func (c *Client) AddPortMapping(protocol Protocol, internalPort, requestedExternalPort uint16, requestedAddr net.IP, lifetime uint32) (err error) {
 	//Need to check mapping does not already exist. Refresh if it does.
 	if _, exists := c.Mappings[internalPort]; exists {
 		//Mapping already exists
 		//Should force refresh the mapping. (Using the lifetime parameter if passed.)
-		return
+		log.Debugf("mapping for port %d exists, refreshing", internalPort)
 	}
-	/*nonce, err := genRandomBytes(12)
-	if err != nil {
-		return ErrNonceGeneration
-	}*/
 	mapData := &OpDataMap{protocol, internalPort, requestedExternalPort, requestedAddr}
 	mapDataBytes, err := mapData.marshal(c.nonce)
 	if err != nil {
@@ -178,10 +182,12 @@ func (c *Client) epochValid(clientTime int64, serverTime uint32) bool {
 	//Function will be used to check whether to trigger mapping renewals and such.
 	e := c.epoch
 	s := false
+	log.Debugf("Prev client time: %d Current client time: %d Prev server time: %d Server time: %d", e.prevClientTime, clientTime, e.prevServerTime, serverTime)
+	//Unsure if this timing check logic if spec compliant.
 	if e.prevServerTime == 0 {
-		//It's the first timestamp, store it.
+		//It's the first timestamp, just store it and return true.
 		s = true
-	} else if (e.prevServerTime - serverTime) <= 1 {
+	} else if ((int64(e.prevServerTime) + (clientTime - e.prevClientTime)) - int64(serverTime)) <= 1 {
 		//If in sync, check delta
 		clientDelta := clientTime - e.prevClientTime
 		serverDelta := serverTime - e.prevServerTime

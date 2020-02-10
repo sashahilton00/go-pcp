@@ -17,4 +17,5 @@ var (
 	ErrMapDataPayload     = errors.New("could not create the map data payload")
 	ErrRequestDataPayload = errors.New("could not create the request data payload")
 	ErrNetworkSend        = errors.New("an error occured whilst sending the network request")
+	ErrMappingNotFound    = errors.New("mapping not found")
 )
