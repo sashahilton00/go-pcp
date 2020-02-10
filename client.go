@@ -64,6 +64,7 @@ type OpDataMap struct {
 	externalIP   net.IP //Also only a suggestion
 }
 
+//Potentially add in progress bool
 type RefreshTime struct {
 	attempt int
 	time int64
@@ -81,6 +82,7 @@ type PortMap struct {
 
 func (data *OpDataMap) marshal(nonce []byte) (msg []byte, err error) {
 	//Potentially relax requirement for non-zero. Appears to be valid in the spec when combined with ProtocolAll.
+	//Also, marshal is probably the wrong place for this, since it technically doesn't cause an error.
 	if data.internalPort == 0 {
 		return nil, ErrPortNotSpecified
 	}
@@ -121,7 +123,7 @@ func (data *OpDataMap) unmarshal(msg []byte) (err error) {
 
 func (c *Client) RefreshPortMapping(internalPort uint16, lifetime uint32) (err error) {
 	if m, exists := c.Mappings[internalPort]; exists {
-		err = c.AddPortMapping(m.protocol, m.internalPort, m.externalPort, m.externalIP, lifetime)
+		err = c.AddPortMapping(m.protocol, m.internalPort, m.externalPort, m.externalIP, lifetime, false)
 	} else {
 		err = ErrMappingNotFound
 	}
@@ -129,14 +131,15 @@ func (c *Client) RefreshPortMapping(internalPort uint16, lifetime uint32) (err e
 }
 
 //Need to add support for PCP options later.
-func (c *Client) AddPortMapping(protocol Protocol, internalPort, requestedExternalPort uint16, requestedAddr net.IP, lifetime uint32) (err error) {
+func (c *Client) AddPortMapping(protocol Protocol, internalPort, requestedExternalPort uint16, requestedAddr net.IP, lifetime uint32, disableChecks bool) (err error) {
+	//disableChecks is a bool which stops the method from correcting parameters/applying defaults
 	if _, exists := c.Mappings[internalPort]; exists {
 		//Mapping already exists
 		//Should force refresh the mapping. (Using the lifetime parameter if passed.)
 		log.Debugf("mapping for port %d exists, refreshing", internalPort)
 	}
 	//Set minimum lifetime to 2 mins. Less than this is pointless.
-	if lifetime < 120 {
+	if !disableChecks && lifetime < 120 {
 		lifetime = 120
 	}
 	mapData := &OpDataMap{protocol, internalPort, requestedExternalPort, requestedAddr}
@@ -189,6 +192,9 @@ func (c *Client) DeletePortMapping(internalPort uint16) (err error) {
 	//Should send an AddPortMapping request, reusing the nonce, but setting the lifetime to zero
 	//Mapping should set active = false as opposed to deleting. See section 15 of rfc6887 wrt
 	//allowing clients with same nonce to reclaim previously deleted mappings (8th paragraph)
+	if m, exists := c.Mappings[internalPort]; exists {
+		err = c.AddPortMapping(m.protocol, m.internalPort, m.externalPort, m.externalIP, 0, false)
+	}
 	return
 }
 

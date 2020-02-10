@@ -39,7 +39,6 @@ func (c *Client) checkMappings() (err error) {
 	for {
 		for k, v := range c.Mappings {
 			t := time.Now()
-			log.Debugf("Time to expiry: %d", v.refresh.time - t.Unix())
 			if v.active && v.refresh.time <= t.Unix() {
 				log.Debugf("Refreshing mapping for port: %d", k)
 				err = c.RefreshPortMapping(v.internalPort, v.lifetime)
