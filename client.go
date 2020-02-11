@@ -189,12 +189,25 @@ func getRefreshTime(attempt int, lifetime uint32) int64 {
 }
 
 func (c *Client) DeletePortMapping(internalPort uint16) (err error) {
-	//Should send an AddPortMapping request, reusing the nonce, but setting the lifetime to zero
-	//Mapping should set active = false as opposed to deleting. See section 15 of rfc6887 wrt
-	//allowing clients with same nonce to reclaim previously deleted mappings (8th paragraph)
+	//Should send an AddPortMapping request, setting the lifetime to zero
 	if m, exists := c.Mappings[internalPort]; exists {
 		err = c.AddPortMapping(m.protocol, m.internalPort, m.externalPort, m.externalIP, 0, true)
 	}
+	//Delete mapping from map
+	L:
+		for {
+			select {
+			case event := <-c.Event:
+				if event.Action == ActionReceivedMapping {
+					m := event.Data.(PortMap)
+					if m.internalPort == internalPort {
+						delete(c.Mappings,9)
+						break L
+					}
+				}
+			}
+			time.Sleep(time.Millisecond)
+		}
 	return
 }
 
