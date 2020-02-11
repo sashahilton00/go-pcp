@@ -24,6 +24,7 @@ func NewClient() (client *Client, err error) {
 	eventChan := make(chan Event)
 
 	mappings := make(map[uint16]PortMap)
+	peerMappings := make(map[uint16]PortMapPeer)
 
 	clientEpoch := &ClientEpoch{}
 
@@ -32,7 +33,7 @@ func NewClient() (client *Client, err error) {
 		return nil, ErrNonceGeneration
 	}
 
-	client = &Client{gatewayAddr, eventChan, mappings, conn, false, clientEpoch, nonce}
+	client = &Client{gatewayAddr, eventChan, mappings, peerMappings, conn, false, clientEpoch, nonce}
 
 	go client.handleMessage()
 	go client.checkMappings()
@@ -43,9 +44,9 @@ func (c *Client) checkMappings() (err error) {
 	for {
 		for k, v := range c.Mappings {
 			t := time.Now()
-			if v.active && v.refresh.time <= t.Unix() {
+			if v.Active && v.Refresh.Time <= t.Unix() {
 				log.Debugf("Refreshing mapping for port: %d", k)
-				err = c.RefreshPortMapping(v.internalPort, v.lifetime)
+				err = c.RefreshPortMapping(v.InternalPort, v.Lifetime)
 				if err != nil {
 					log.Errorf("Error occured whilst refreshing mapping: %s", err)
 				}
@@ -113,9 +114,22 @@ func (c *Client) handleMessage() (err error) {
 						continue
 					}
 
-					rt := RefreshTime{0,getRefreshTime(0, res.lifetime)}
-					m := PortMap{data.protocol,data.internalPort,data.externalPort,data.externalIP,true,res.lifetime,rt}
-					c.Mappings[data.internalPort] = m
+					rt := RefreshTime{
+						Attempt: 0,
+						Time: getRefreshTime(0, res.lifetime),
+					}
+					m := PortMap{
+						OpDataMap: OpDataMap{
+							Protocol: data.Protocol,
+							InternalPort: data.InternalPort,
+							ExternalPort: data.ExternalPort,
+							ExternalIP: data.ExternalIP,
+						},
+						Active: true,
+						Lifetime: res.lifetime,
+						Refresh: rt,
+					}
+					c.Mappings[data.InternalPort] = m
 					c.Event <- Event{ActionReceivedMapping, m}
 				case OpPeer:
 					//OpPeer case

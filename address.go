@@ -32,8 +32,8 @@ func (c *Client) GetExternalAddress() (addr net.IP, err error) {
 			case event := <-c.Event:
 				if event.Action == ActionReceivedMapping {
 					m := event.Data.(PortMap)
-					if m.internalPort == 9 {
-						addr = m.externalIP
+					if m.InternalPort == 9 {
+						addr = m.ExternalIP
 						delete(c.Mappings,9)
 						break L
 					}

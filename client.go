@@ -50,6 +50,7 @@ type Client struct {
 	GatewayAddr net.IP
 	Event       chan Event
 	Mappings    map[uint16]PortMap
+	PeerMappings map[uint16]PortMapPeer
 
 	conn      *net.UDPConn
 	cancelled bool
@@ -58,51 +59,60 @@ type Client struct {
 }
 
 type OpDataMap struct {
-	protocol     Protocol
-	internalPort uint16
-	externalPort uint16 //This is only a suggestion in request. Server ultimately decides.
-	externalIP   net.IP //Also only a suggestion
+	Protocol     Protocol
+	InternalPort uint16
+	ExternalPort uint16 //This is only a suggestion in request. Server ultimately decides.
+	ExternalIP   net.IP //Also only a suggestion
+}
+
+type OpDataPeer struct {
+	OpDataMap
+	RemotePort   uint16
+	RemoteIP     net.IP
 }
 
 //Potentially add in progress bool
 type RefreshTime struct {
-	attempt int
-	time int64
+	Attempt int
+	Time int64
 }
 
 type PortMap struct {
-	protocol     Protocol
-	internalPort uint16
-	externalPort uint16
-	externalIP   net.IP
-	active       bool
-	lifetime     uint32
-	refresh      RefreshTime
+	OpDataMap
+	Active       bool
+	Lifetime     uint32
+	Refresh      RefreshTime
+}
+
+type PortMapPeer struct {
+	PortMap
+	RemotePort   uint16
+	RemoteIP     net.IP
 }
 
 func (data *OpDataMap) marshal(nonce []byte) (msg []byte, err error) {
 	//Potentially relax requirement for non-zero. Appears to be valid in the spec when combined with ProtocolAll.
 	//Also, marshal is probably the wrong place for this, since it technically doesn't cause an error.
-	if data.internalPort == 0 {
+	if data.InternalPort == 0 {
 		return nil, ErrPortNotSpecified
 	}
 
 	empty := make([]byte, 3)
 
 	internalPortBytes := make([]byte, 2)
-	binary.BigEndian.PutUint16(internalPortBytes, data.internalPort)
+	binary.BigEndian.PutUint16(internalPortBytes, data.InternalPort)
 
 	externalPortBytes := make([]byte, 2)
-	binary.BigEndian.PutUint16(externalPortBytes, data.externalPort)
+	binary.BigEndian.PutUint16(externalPortBytes, data.ExternalPort)
 
 	addr := make([]byte, 16)
-	if data.externalIP != nil {
-		copy(addr, data.externalIP)
+	if data.ExternalIP != nil {
+		copy(addr, data.ExternalIP)
 	}
 
 	var slices = [][]byte{
 		nonce,
-		[]byte{byte(data.protocol)},
+		[]byte{byte(data.Protocol)},
 		empty,
 		internalPortBytes,
 		externalPortBytes,
@@ -114,16 +124,72 @@ func (data *OpDataMap) marshal(nonce []byte) (msg []byte, err error) {
 }
 
 func (data *OpDataMap) unmarshal(msg []byte) (err error) {
-	data.protocol = Protocol(msg[12])
-	data.internalPort = binary.BigEndian.Uint16(msg[16:18])
-	data.externalPort = binary.BigEndian.Uint16(msg[18:20])
-	data.externalIP = net.IP(msg[20:36])
+	data = &OpDataMap{
+		Protocol: Protocol(msg[12]),
+		InternalPort: binary.BigEndian.Uint16(msg[16:18]),
+		ExternalPort: binary.BigEndian.Uint16(msg[18:20]),
+		ExternalIP: net.IP(msg[20:36]),
+	}
+	return
+}
+
+func (data *OpDataPeer) marshal(nonce []byte) (msg []byte, err error) {
+	//Potentially relax requirement for non-zero. Appears to be valid in the spec when combined with ProtocolAll.
+	//Also, marshal is probably the wrong place for this, since it technically doesn't cause an error.
+	if data.InternalPort == 0 {
+		return nil, ErrPortNotSpecified
+	}
+
+	r1, r2 := make([]byte, 3), make([]byte, 2)
+
+	internalPortBytes, externalPortBytes, remotePortBytes := make([]byte, 2), make([]byte, 2), make([]byte, 2)
+
+	binary.BigEndian.PutUint16(internalPortBytes, data.InternalPort)
+	binary.BigEndian.PutUint16(externalPortBytes, data.ExternalPort)
+	binary.BigEndian.PutUint16(remotePortBytes, data.RemotePort)
+
+	addr, remoteAddr := make([]byte, 16), make([]byte, 16)
+	if data.ExternalIP != nil {
+		copy(addr, data.ExternalIP)
+	}
+	if data.RemoteIP == nil {
+		return nil, ErrNoAddress
+	}
+	copy(remoteAddr, data.RemoteIP)
+
+	var slices = [][]byte{
+		nonce,
+		[]byte{byte(data.Protocol)},
+		r1,
+		internalPortBytes,
+		externalPortBytes,
+		addr,
+		remotePortBytes,
+		r2,
+		remoteAddr,
+	}
+
+	msg = concatCopyPreAllocate(slices)
+	return
+}
+
+func (data *OpDataPeer) unmarshal(msg []byte) (err error) {
+	data = &OpDataPeer{
+		OpDataMap: OpDataMap{
+			Protocol: Protocol(msg[12]),
+			InternalPort: binary.BigEndian.Uint16(msg[16:18]),
+			ExternalPort: binary.BigEndian.Uint16(msg[18:20]),
+			ExternalIP: net.IP(msg[20:36]),
+		},
+		RemotePort: binary.BigEndian.Uint16(msg[36:38]),
+		RemoteIP: net.IP(msg[40:56]),
+	}
 	return
 }
 
 func (c *Client) RefreshPortMapping(internalPort uint16, lifetime uint32) (err error) {
 	if m, exists := c.Mappings[internalPort]; exists {
-		err = c.AddPortMapping(m.protocol, m.internalPort, m.externalPort, m.externalIP, lifetime, false)
+		err = c.AddPortMapping(m.Protocol, m.InternalPort, m.ExternalPort, m.ExternalIP, lifetime, false)
 	} else {
 		err = ErrMappingNotFound
 	}
@@ -142,7 +208,12 @@ func (c *Client) AddPortMapping(protocol Protocol, internalPort, requestedExtern
 	if !disableChecks && lifetime < 120 {
 		lifetime = 120
 	}
-	mapData := &OpDataMap{protocol, internalPort, requestedExternalPort, requestedAddr}
+	mapData := &OpDataMap{
+		Protocol: protocol,
+		InternalPort: internalPort,
+		ExternalPort: requestedExternalPort,
+		ExternalIP: requestedAddr,
+	}
 	mapDataBytes, err := mapData.marshal(c.nonce)
 	if err != nil {
 		return ErrMapDataPayload
@@ -162,9 +233,110 @@ func (c *Client) AddPortMapping(protocol Protocol, internalPort, requestedExtern
 	}
 	//Add provisional mapping. Response will set actual port, active and refresh
 	rt := getRefreshTime(0, lifetime)
-	refresh := RefreshTime{0, rt}
-	mapping := PortMap{protocol, internalPort, requestedExternalPort, requestedAddr, false, lifetime, refresh}
+	refresh := RefreshTime{
+		Attempt: 0,
+		Time: rt,
+	}
+	mapping := PortMap{
+		OpDataMap: OpDataMap{
+			Protocol: protocol,
+			InternalPort: internalPort,
+			ExternalPort: requestedExternalPort,
+			ExternalIP: requestedAddr,
+		},
+		Active: false,
+		Lifetime: lifetime,
+		Refresh: refresh,
+	}
 	c.Mappings[internalPort] = mapping
+	return
+}
+
+//This functionality is essentially duplicated from AddPortMapping. Should split out the marshal and send logic from the construction.
+func (c *Client) AddPeerMapping(protocol Protocol, internalPort, requestedExternalPort, remotePort uint16, requestedAddr, remoteAddr net.IP, lifetime uint32, disableChecks bool) (err error) {
+	//disableChecks is a bool which stops the method from correcting parameters/applying defaults
+	if _, exists := c.PeerMappings[internalPort]; exists {
+		//Mapping already exists
+		//Should force refresh the mapping. (Using the lifetime parameter if passed.)
+		log.Debugf("peer mapping for port %d exists, refreshing", internalPort)
+	}
+	//Set minimum lifetime to 2 mins. Less than this is pointless.
+	if !disableChecks && lifetime < 120 {
+		lifetime = 120
+	}
+	peerData := &OpDataPeer{
+		OpDataMap: OpDataMap{
+			Protocol: protocol,
+			InternalPort: internalPort,
+			ExternalPort: requestedExternalPort,
+			ExternalIP: requestedAddr,
+		},
+		RemotePort: remotePort,
+		RemoteIP: remoteAddr,
+	}
+	peerDataBytes, err := peerData.marshal(c.nonce)
+	if err != nil {
+		return ErrPeerDataPayload
+	}
+	addr, err := c.GetInternalAddress()
+	if err != nil {
+		return ErrNoInternalAddress
+	}
+	requestData := &RequestPacket{OpCode(OpPeer), lifetime, addr, peerDataBytes, nil}
+	requestDataBytes, err := requestData.marshal()
+	if err != nil {
+		return ErrRequestDataPayload
+	}
+	err = c.sendMessage(requestDataBytes)
+	if err != nil {
+		return ErrNetworkSend
+	}
+	//Add provisional mapping. Response will set actual port, active and refresh
+	rt := getRefreshTime(0, lifetime)
+	refresh := RefreshTime{
+		Attempt: 0,
+		Time: rt,
+	}
+	mapping := PortMapPeer{
+		PortMap: PortMap{
+			OpDataMap: OpDataMap{
+				Protocol: protocol,
+				InternalPort: internalPort,
+				ExternalPort: requestedExternalPort,
+				ExternalIP: requestedAddr,
+			},
+			Active: false,
+			Lifetime: lifetime,
+			Refresh: refresh,
+		},
+		RemotePort: remotePort,
+		RemoteIP: remoteAddr,
+	}
+	c.PeerMappings[internalPort] = mapping
+	return
+}
+
+
+func (c *Client) DeletePortMapping(internalPort uint16) (err error) {
+	//Should send an AddPortMapping request, setting the lifetime to zero
+	if m, exists := c.Mappings[internalPort]; exists {
+		err = c.AddPortMapping(m.Protocol, m.InternalPort, m.ExternalPort, m.ExternalIP, 0, true)
+	}
+	//Delete mapping from map
+	L:
+		for {
+			select {
+			case event := <-c.Event:
+				if event.Action == ActionReceivedMapping {
+					m := event.Data.(PortMap)
+					if m.InternalPort == internalPort {
+						delete(c.Mappings,9)
+						break L
+					}
+				}
+			}
+			time.Sleep(time.Millisecond)
+		}
 	return
 }
 
@@ -186,29 +358,6 @@ func getRefreshTime(attempt int, lifetime uint32) int64 {
 	log.Debugf("max - current: %d min - current: %d random int: %d, lifetime: %d", max - t.Unix(), min - t.Unix(), interval - t.Unix(), lifetime)
 	log.Debugf("Refresh max: %d Refresh min: %d Time now: %d Interval: %d", max, min, t.Unix(), interval)
 	return interval
-}
-
-func (c *Client) DeletePortMapping(internalPort uint16) (err error) {
-	//Should send an AddPortMapping request, setting the lifetime to zero
-	if m, exists := c.Mappings[internalPort]; exists {
-		err = c.AddPortMapping(m.protocol, m.internalPort, m.externalPort, m.externalIP, 0, true)
-	}
-	//Delete mapping from map
-	L:
-		for {
-			select {
-			case event := <-c.Event:
-				if event.Action == ActionReceivedMapping {
-					m := event.Data.(PortMap)
-					if m.internalPort == internalPort {
-						delete(c.Mappings,9)
-						break L
-					}
-				}
-			}
-			time.Sleep(time.Millisecond)
-		}
-	return
 }
 
 func concatCopyPreAllocate(slices [][]byte) []byte {
