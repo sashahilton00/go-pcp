@@ -24,7 +24,7 @@ func NewClient() (client *Client, err error) {
 	eventChan := make(chan Event)
 
 	mappings := make(map[uint16]PortMap)
-	peerMappings := make(map[uint16]PortMapPeer)
+	peerMappings := make(map[uint16]PeerMap)
 
 	clientEpoch := &ClientEpoch{}
 

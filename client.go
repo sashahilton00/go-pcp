@@ -50,7 +50,7 @@ type Client struct {
 	GatewayAddr net.IP
 	Event       chan Event
 	Mappings    map[uint16]PortMap
-	PeerMappings map[uint16]PortMapPeer
+	PeerMappings map[uint16]PeerMap
 
 	conn      *net.UDPConn
 	cancelled bool
@@ -84,7 +84,7 @@ type PortMap struct {
 	Refresh      RefreshTime
 }
 
-type PortMapPeer struct {
+type PeerMap struct {
 	PortMap
 	RemotePort   uint16
 	RemoteIP     net.IP
@@ -187,21 +187,6 @@ func (data *OpDataPeer) unmarshal(msg []byte) (err error) {
 	return
 }
 
-func (c *Client) RefreshPortMapping(internalPort uint16, lifetime uint32) (err error) {
-	if m, exists := c.Mappings[internalPort]; exists {
-		mapData := &OpDataMap{
-			Protocol: m.Protocol,
-			InternalPort: m.InternalPort,
-			ExternalPort: m.ExternalPort,
-			ExternalIP: m.ExternalIP,
-		}
-		err = c.addMapping(OpCode(OpMap), lifetime, mapData)
-	} else {
-		err = ErrMappingNotFound
-	}
-	return
-}
-
 //Need to add support for PCP options later.
 func (c *Client) AddPortMapping(protocol Protocol, internalPort, requestedExternalPort uint16, requestedAddr net.IP, lifetime uint32) (err error) {
 	//disableChecks is a bool which stops the method from correcting parameters/applying defaults
@@ -249,7 +234,6 @@ func (c *Client) AddPeerMapping(protocol Protocol, internalPort, requestedExtern
 	return
 }
 
-
 func (c *Client) DeletePortMapping(internalPort uint16) (err error) {
 	//Should send an AddPortMapping request, setting the lifetime to zero
 	if m, exists := c.Mappings[internalPort]; exists {
@@ -269,13 +253,80 @@ func (c *Client) DeletePortMapping(internalPort uint16) (err error) {
 				if event.Action == ActionReceivedMapping {
 					m := event.Data.(PortMap)
 					if m.InternalPort == internalPort {
-						delete(c.Mappings,9)
+						delete(c.Mappings, internalPort)
 						break L
 					}
 				}
 			}
 			time.Sleep(time.Millisecond)
 		}
+	return
+}
+
+func (c *Client) DeletePeerMapping(internalPort uint16) (err error) {
+	//Should send an AddPortMapping request, setting the lifetime to zero
+	if m, exists := c.PeerMappings[internalPort]; exists {
+		peerData := &OpDataPeer{
+			OpDataMap: OpDataMap{
+				Protocol: m.Protocol,
+				InternalPort: m.InternalPort,
+				ExternalPort: m.ExternalPort,
+				ExternalIP: m.ExternalIP,
+			},
+			RemotePort: m.RemotePort,
+			RemoteIP: m.RemoteIP,
+		}
+		err = c.addMapping(OpPeer, 0, peerData)
+	}
+	//Delete mapping from map
+	L:
+		for {
+			select {
+			case event := <-c.Event:
+				if event.Action == ActionReceivedPeer {
+					m := event.Data.(PeerMap)
+					if m.InternalPort == internalPort {
+						delete(c.PeerMappings, internalPort)
+						break L
+					}
+				}
+			}
+			time.Sleep(time.Millisecond)
+		}
+	return
+}
+
+func (c *Client) RefreshPortMapping(internalPort uint16, lifetime uint32) (err error) {
+	if m, exists := c.Mappings[internalPort]; exists {
+		mapData := &OpDataMap{
+			Protocol: m.Protocol,
+			InternalPort: m.InternalPort,
+			ExternalPort: m.ExternalPort,
+			ExternalIP: m.ExternalIP,
+		}
+		err = c.addMapping(OpCode(OpMap), lifetime, mapData)
+	} else {
+		err = ErrMappingNotFound
+	}
+	return
+}
+
+func (c *Client) RefreshPeerMapping(internalPort uint16, lifetime uint32) (err error) {
+	if m, exists := c.PeerMappings[internalPort]; exists {
+		peerData := &OpDataPeer{
+			OpDataMap: OpDataMap{
+				Protocol: m.Protocol,
+				InternalPort: m.InternalPort,
+				ExternalPort: m.ExternalPort,
+				ExternalIP: m.ExternalIP,
+			},
+			RemotePort: m.RemotePort,
+			RemoteIP: m.RemoteIP,
+		}
+		err = c.addMapping(OpCode(OpPeer), lifetime, peerData)
+	} else {
+		err = ErrMappingNotFound
+	}
 	return
 }
 
@@ -333,7 +384,7 @@ func (c *Client) addMapping(op OpCode, lifetime uint32, data interface{}) (err e
 		c.Mappings[d.InternalPort] = portMap
 	case OpPeer:
 		d := data.(*OpDataPeer)
-		peerMap := PortMapPeer{
+		peerMap := PeerMap{
 			PortMap: PortMap{
 				OpDataMap: OpDataMap{
 					Protocol: d.Protocol,
@@ -351,39 +402,6 @@ func (c *Client) addMapping(op OpCode, lifetime uint32, data interface{}) (err e
 		c.PeerMappings[d.InternalPort] = peerMap
 	}
 	return
-}
-
-func getRefreshTime(attempt int, lifetime uint32) int64 {
-	//Reset seed on each call to avoid non-pseudorandom intervals over prolonged usage
-	rand.Seed(time.Now().UnixNano())
-	t := time.Now()
-	//See 11.2.1 of RFC6887
-	max := t.Unix() + (5 * int64(lifetime)) / (1 << (attempt + 3))
-	min := t.Unix() + (int64(lifetime)) / (1 << (attempt + 1))
-	var interval int64
-	if (max - min) > 0 {
-		interval = rand.Int63n(max - min) + min
-	}
-	if interval < 4 {
-		interval = t.Unix() + 4
-	}
-	log.Debug(max, min, max - min)
-	log.Debugf("max - current: %d min - current: %d random int: %d, lifetime: %d", max - t.Unix(), min - t.Unix(), interval - t.Unix(), lifetime)
-	log.Debugf("Refresh max: %d Refresh min: %d Time now: %d Interval: %d", max, min, t.Unix(), interval)
-	return interval
-}
-
-func concatCopyPreAllocate(slices [][]byte) []byte {
-	var totalLen int
-	for _, s := range slices {
-		totalLen += len(s)
-	}
-	tmp := make([]byte, totalLen)
-	var i int
-	for _, s := range slices {
-		i += copy(tmp[i:], s)
-	}
-	return tmp
 }
 
 func (c *Client) epochValid(clientTime int64, serverTime uint32) bool {
@@ -411,4 +429,37 @@ func (c *Client) epochValid(clientTime int64, serverTime uint32) bool {
 	e.prevServerTime = serverTime
 	e.prevClientTime = clientTime
 	return s
+}
+
+func concatCopyPreAllocate(slices [][]byte) []byte {
+	var totalLen int
+	for _, s := range slices {
+		totalLen += len(s)
+	}
+	tmp := make([]byte, totalLen)
+	var i int
+	for _, s := range slices {
+		i += copy(tmp[i:], s)
+	}
+	return tmp
+}
+
+func getRefreshTime(attempt int, lifetime uint32) int64 {
+	//Reset seed on each call to avoid non-pseudorandom intervals over prolonged usage
+	rand.Seed(time.Now().UnixNano())
+	t := time.Now()
+	//See 11.2.1 of RFC6887
+	max := t.Unix() + (5 * int64(lifetime)) / (1 << (attempt + 3))
+	min := t.Unix() + (int64(lifetime)) / (1 << (attempt + 1))
+	var interval int64
+	if (max - min) > 0 {
+		interval = rand.Int63n(max - min) + min
+	}
+	if interval < 4 {
+		interval = t.Unix() + 4
+	}
+	log.Debug(max, min, max - min)
+	log.Debugf("max - current: %d min - current: %d random int: %d, lifetime: %d", max - t.Unix(), min - t.Unix(), interval - t.Unix(), lifetime)
+	log.Debugf("Refresh max: %d Refresh min: %d Time now: %d Interval: %d", max, min, t.Unix(), interval)
+	return interval
 }
