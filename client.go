@@ -189,7 +189,13 @@ func (data *OpDataPeer) unmarshal(msg []byte) (err error) {
 
 func (c *Client) RefreshPortMapping(internalPort uint16, lifetime uint32) (err error) {
 	if m, exists := c.Mappings[internalPort]; exists {
-		err = c.AddPortMapping(m.Protocol, m.InternalPort, m.ExternalPort, m.ExternalIP, lifetime, false)
+		mapData := &OpDataMap{
+			Protocol: m.Protocol,
+			InternalPort: m.InternalPort,
+			ExternalPort: m.ExternalPort,
+			ExternalIP: m.ExternalIP,
+		}
+		err = c.addMapping(OpCode(OpMap), lifetime, mapData)
 	} else {
 		err = ErrMappingNotFound
 	}
@@ -197,7 +203,7 @@ func (c *Client) RefreshPortMapping(internalPort uint16, lifetime uint32) (err e
 }
 
 //Need to add support for PCP options later.
-func (c *Client) AddPortMapping(protocol Protocol, internalPort, requestedExternalPort uint16, requestedAddr net.IP, lifetime uint32, disableChecks bool) (err error) {
+func (c *Client) AddPortMapping(protocol Protocol, internalPort, requestedExternalPort uint16, requestedAddr net.IP, lifetime uint32) (err error) {
 	//disableChecks is a bool which stops the method from correcting parameters/applying defaults
 	if _, exists := c.Mappings[internalPort]; exists {
 		//Mapping already exists
@@ -205,7 +211,7 @@ func (c *Client) AddPortMapping(protocol Protocol, internalPort, requestedExtern
 		log.Debugf("mapping for port %d exists, refreshing", internalPort)
 	}
 	//Set minimum lifetime to 2 mins. Less than this is pointless.
-	if !disableChecks && lifetime < 120 {
+	if lifetime < 120 {
 		lifetime = 120
 	}
 	mapData := &OpDataMap{
@@ -214,46 +220,11 @@ func (c *Client) AddPortMapping(protocol Protocol, internalPort, requestedExtern
 		ExternalPort: requestedExternalPort,
 		ExternalIP: requestedAddr,
 	}
-	mapDataBytes, err := mapData.marshal(c.nonce)
-	if err != nil {
-		return ErrMapDataPayload
-	}
-	addr, err := c.GetInternalAddress()
-	if err != nil {
-		return ErrNoInternalAddress
-	}
-	requestData := &RequestPacket{OpCode(OpMap), lifetime, addr, mapDataBytes, nil}
-	requestDataBytes, err := requestData.marshal()
-	if err != nil {
-		return ErrRequestDataPayload
-	}
-	err = c.sendMessage(requestDataBytes)
-	if err != nil {
-		return ErrNetworkSend
-	}
-	//Add provisional mapping. Response will set actual port, active and refresh
-	rt := getRefreshTime(0, lifetime)
-	refresh := RefreshTime{
-		Attempt: 0,
-		Time: rt,
-	}
-	mapping := PortMap{
-		OpDataMap: OpDataMap{
-			Protocol: protocol,
-			InternalPort: internalPort,
-			ExternalPort: requestedExternalPort,
-			ExternalIP: requestedAddr,
-		},
-		Active: false,
-		Lifetime: lifetime,
-		Refresh: refresh,
-	}
-	c.Mappings[internalPort] = mapping
+	err = c.addMapping(OpCode(OpMap), lifetime, mapData)
 	return
 }
 
-//This functionality is essentially duplicated from AddPortMapping. Should split out the marshal and send logic from the construction.
-func (c *Client) AddPeerMapping(protocol Protocol, internalPort, requestedExternalPort, remotePort uint16, requestedAddr, remoteAddr net.IP, lifetime uint32, disableChecks bool) (err error) {
+func (c *Client) AddPeerMapping(protocol Protocol, internalPort, requestedExternalPort, remotePort uint16, requestedAddr, remoteAddr net.IP, lifetime uint32) (err error) {
 	//disableChecks is a bool which stops the method from correcting parameters/applying defaults
 	if _, exists := c.PeerMappings[internalPort]; exists {
 		//Mapping already exists
@@ -261,7 +232,7 @@ func (c *Client) AddPeerMapping(protocol Protocol, internalPort, requestedExtern
 		log.Debugf("peer mapping for port %d exists, refreshing", internalPort)
 	}
 	//Set minimum lifetime to 2 mins. Less than this is pointless.
-	if !disableChecks && lifetime < 120 {
+	if lifetime < 120 {
 		lifetime = 120
 	}
 	peerData := &OpDataPeer{
@@ -274,45 +245,7 @@ func (c *Client) AddPeerMapping(protocol Protocol, internalPort, requestedExtern
 		RemotePort: remotePort,
 		RemoteIP: remoteAddr,
 	}
-	peerDataBytes, err := peerData.marshal(c.nonce)
-	if err != nil {
-		return ErrPeerDataPayload
-	}
-	addr, err := c.GetInternalAddress()
-	if err != nil {
-		return ErrNoInternalAddress
-	}
-	requestData := &RequestPacket{OpCode(OpPeer), lifetime, addr, peerDataBytes, nil}
-	requestDataBytes, err := requestData.marshal()
-	if err != nil {
-		return ErrRequestDataPayload
-	}
-	err = c.sendMessage(requestDataBytes)
-	if err != nil {
-		return ErrNetworkSend
-	}
-	//Add provisional mapping. Response will set actual port, active and refresh
-	rt := getRefreshTime(0, lifetime)
-	refresh := RefreshTime{
-		Attempt: 0,
-		Time: rt,
-	}
-	mapping := PortMapPeer{
-		PortMap: PortMap{
-			OpDataMap: OpDataMap{
-				Protocol: protocol,
-				InternalPort: internalPort,
-				ExternalPort: requestedExternalPort,
-				ExternalIP: requestedAddr,
-			},
-			Active: false,
-			Lifetime: lifetime,
-			Refresh: refresh,
-		},
-		RemotePort: remotePort,
-		RemoteIP: remoteAddr,
-	}
-	c.PeerMappings[internalPort] = mapping
+	err = c.addMapping(OpCode(OpPeer), lifetime, peerData)
 	return
 }
 
@@ -320,7 +253,13 @@ func (c *Client) AddPeerMapping(protocol Protocol, internalPort, requestedExtern
 func (c *Client) DeletePortMapping(internalPort uint16) (err error) {
 	//Should send an AddPortMapping request, setting the lifetime to zero
 	if m, exists := c.Mappings[internalPort]; exists {
-		err = c.AddPortMapping(m.Protocol, m.InternalPort, m.ExternalPort, m.ExternalIP, 0, true)
+		mapData := &OpDataMap{
+			Protocol: m.Protocol,
+			InternalPort: m.InternalPort,
+			ExternalPort: m.ExternalPort,
+			ExternalIP: m.ExternalIP,
+		}
+		err = c.addMapping(OpMap, 0, mapData)
 	}
 	//Delete mapping from map
 	L:
@@ -337,6 +276,80 @@ func (c *Client) DeletePortMapping(internalPort uint16) (err error) {
 			}
 			time.Sleep(time.Millisecond)
 		}
+	return
+}
+
+func (c *Client) addMapping(op OpCode, lifetime uint32, data interface{}) (err error) {
+	var msg []byte
+	switch op {
+	case OpMap:
+		d := data.(*OpDataMap)
+		msg, err = d.marshal(c.nonce)
+		if err != nil {
+			return ErrPeerDataPayload
+		}
+	case OpPeer:
+		d := data.(*OpDataPeer)
+		msg, err = d.marshal(c.nonce)
+		if err != nil {
+			return ErrPeerDataPayload
+		}
+	}
+
+	addr, err := c.GetInternalAddress()
+	if err != nil {
+		return ErrNoInternalAddress
+	}
+
+	requestData := &RequestPacket{op, lifetime, addr, msg, nil}
+	requestDataBytes, err := requestData.marshal()
+	if err != nil {
+		return ErrRequestDataPayload
+	}
+	err = c.sendMessage(requestDataBytes)
+	if err != nil {
+		return ErrNetworkSend
+	}
+	rt := getRefreshTime(0, lifetime)
+	refresh := RefreshTime{
+		Attempt: 0,
+		Time: rt,
+	}
+
+	switch op {
+	case OpMap:
+		d := data.(*OpDataMap)
+		portMap := PortMap{
+			OpDataMap: OpDataMap{
+				Protocol: d.Protocol,
+				InternalPort: d.InternalPort,
+				ExternalPort: d.ExternalPort,
+				ExternalIP: d.ExternalIP,
+			},
+			Active: false,
+			Lifetime: lifetime,
+			Refresh: refresh,
+		}
+		c.Mappings[d.InternalPort] = portMap
+	case OpPeer:
+		d := data.(*OpDataPeer)
+		peerMap := PortMapPeer{
+			PortMap: PortMap{
+				OpDataMap: OpDataMap{
+					Protocol: d.Protocol,
+					InternalPort: d.InternalPort,
+					ExternalPort: d.ExternalPort,
+					ExternalIP: d.ExternalIP,
+				},
+				Active: false,
+				Lifetime: lifetime,
+				Refresh: refresh,
+			},
+			RemotePort: d.RemotePort,
+			RemoteIP: d.RemoteIP,
+		}
+		c.PeerMappings[d.InternalPort] = peerMap
+	}
 	return
 }
 

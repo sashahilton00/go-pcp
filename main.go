@@ -28,7 +28,7 @@ func main() {
 	}
 	log.Infof("Internal IP: %s Gateway IP: %s", addr, gatewayAddr)
 
-	err = client.AddPortMapping(ProtocolTCP, 8080, 0, net.ParseIP("127.0.0.1"), DefaultLifetimeSeconds, false)
+	err = client.AddPortMapping(ProtocolTCP, 8080, 0, net.ParseIP("127.0.0.1"), DefaultLifetimeSeconds)
 	if err == nil {
 		log.Debug("successfully sent port map request")
 	}
@@ -39,7 +39,7 @@ func main() {
 	} else {
 		log.Errorf("err retrieving address: %s", err)
 	}
-	
+
 	for {
 		select {
 		case event := <-client.Event:
