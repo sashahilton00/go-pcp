@@ -32,15 +32,15 @@ type ClientEpoch struct {
 }
 
 type Client struct {
-	GatewayAddr net.IP
-	Event       chan Event
-	Mappings    map[uint16]PortMap
+	GatewayAddr  net.IP
+	Event        chan Event
+	Mappings     map[uint16]PortMap
 	PeerMappings map[uint16]PeerMap
 
 	conn      *net.UDPConn
 	cancelled bool
 	epoch     *ClientEpoch
-	nonce        []byte
+	nonce     []byte
 }
 
 //Need to add support for PCP options later.
@@ -56,10 +56,10 @@ func (c *Client) AddPortMapping(protocol Protocol, internalPort, requestedExtern
 		lifetime = 120
 	}
 	mapData := &OpDataMap{
-		Protocol: protocol,
+		Protocol:     protocol,
 		InternalPort: internalPort,
 		ExternalPort: requestedExternalPort,
-		ExternalIP: requestedAddr,
+		ExternalIP:   requestedAddr,
 	}
 	err = c.addMapping(OpCode(OpMap), lifetime, mapData)
 	return
@@ -78,13 +78,13 @@ func (c *Client) AddPeerMapping(protocol Protocol, internalPort, requestedExtern
 	}
 	peerData := &OpDataPeer{
 		OpDataMap: OpDataMap{
-			Protocol: protocol,
+			Protocol:     protocol,
 			InternalPort: internalPort,
 			ExternalPort: requestedExternalPort,
-			ExternalIP: requestedAddr,
+			ExternalIP:   requestedAddr,
 		},
 		RemotePort: remotePort,
-		RemoteIP: remoteAddr,
+		RemoteIP:   remoteAddr,
 	}
 	err = c.addMapping(OpCode(OpPeer), lifetime, peerData)
 	return
@@ -94,28 +94,28 @@ func (c *Client) DeletePortMapping(internalPort uint16) (err error) {
 	//Should send an AddPortMapping request, setting the lifetime to zero
 	if m, exists := c.Mappings[internalPort]; exists {
 		mapData := &OpDataMap{
-			Protocol: m.Protocol,
+			Protocol:     m.Protocol,
 			InternalPort: m.InternalPort,
 			ExternalPort: m.ExternalPort,
-			ExternalIP: m.ExternalIP,
+			ExternalIP:   m.ExternalIP,
 		}
 		err = c.addMapping(OpMap, 0, mapData)
 	}
 	//Delete mapping from map
-	L:
-		for {
-			select {
-			case event := <-c.Event:
-				if event.Action == ActionReceivedMapping {
-					m := event.Data.(PortMap)
-					if m.InternalPort == internalPort {
-						delete(c.Mappings, internalPort)
-						break L
-					}
+L:
+	for {
+		select {
+		case event := <-c.Event:
+			if event.Action == ActionReceivedMapping {
+				m := event.Data.(PortMap)
+				if m.InternalPort == internalPort {
+					delete(c.Mappings, internalPort)
+					break L
 				}
 			}
-			time.Sleep(time.Millisecond)
 		}
+		time.Sleep(time.Millisecond)
+	}
 	return
 }
 
@@ -124,31 +124,31 @@ func (c *Client) DeletePeerMapping(internalPort uint16) (err error) {
 	if m, exists := c.PeerMappings[internalPort]; exists {
 		peerData := &OpDataPeer{
 			OpDataMap: OpDataMap{
-				Protocol: m.Protocol,
+				Protocol:     m.Protocol,
 				InternalPort: m.InternalPort,
 				ExternalPort: m.ExternalPort,
-				ExternalIP: m.ExternalIP,
+				ExternalIP:   m.ExternalIP,
 			},
 			RemotePort: m.RemotePort,
-			RemoteIP: m.RemoteIP,
+			RemoteIP:   m.RemoteIP,
 		}
 		err = c.addMapping(OpPeer, 0, peerData)
 	}
 	//Delete mapping from map
-	L:
-		for {
-			select {
-			case event := <-c.Event:
-				if event.Action == ActionReceivedPeer {
-					m := event.Data.(PeerMap)
-					if m.InternalPort == internalPort {
-						delete(c.PeerMappings, internalPort)
-						break L
-					}
+L:
+	for {
+		select {
+		case event := <-c.Event:
+			if event.Action == ActionReceivedPeer {
+				m := event.Data.(PeerMap)
+				if m.InternalPort == internalPort {
+					delete(c.PeerMappings, internalPort)
+					break L
 				}
 			}
-			time.Sleep(time.Millisecond)
 		}
+		time.Sleep(time.Millisecond)
+	}
 	return
 }
 
@@ -166,31 +166,31 @@ func (c *Client) GetExternalAddress() (addr net.IP, err error) {
 	// Will create a short mapping with PCP server and return the address returned
 	// by the server in the response packet. Use UDP/9 (Discard) as short mapping.
 	mapData := &OpDataMap{
-		Protocol: ProtocolUDP,
+		Protocol:     ProtocolUDP,
 		InternalPort: 9,
 		ExternalPort: 0,
-		ExternalIP: net.ParseIP("127.0.0.1"),
+		ExternalIP:   net.ParseIP("127.0.0.1"),
 	}
 	err = c.addMapping(OpMap, 30, mapData)
 	if err != nil {
 		log.Error(err)
 		return nil, err
 	}
-	L:
-		for {
-			select {
-			case event := <-c.Event:
-				if event.Action == ActionReceivedMapping {
-					m := event.Data.(PortMap)
-					if m.InternalPort == 9 {
-						addr = m.ExternalIP
-						delete(c.Mappings,9)
-						break L
-					}
+L:
+	for {
+		select {
+		case event := <-c.Event:
+			if event.Action == ActionReceivedMapping {
+				m := event.Data.(PortMap)
+				if m.InternalPort == 9 {
+					addr = m.ExternalIP
+					delete(c.Mappings, 9)
+					break L
 				}
 			}
-			time.Sleep(time.Millisecond)
 		}
+		time.Sleep(time.Millisecond)
+	}
 	return
 }
 
@@ -227,10 +227,10 @@ func (c *Client) GetInternalAddress() (addr net.IP, err error) {
 func (c *Client) RefreshPortMapping(internalPort uint16, lifetime uint32) (err error) {
 	if m, exists := c.Mappings[internalPort]; exists {
 		mapData := &OpDataMap{
-			Protocol: m.Protocol,
+			Protocol:     m.Protocol,
 			InternalPort: m.InternalPort,
 			ExternalPort: m.ExternalPort,
-			ExternalIP: m.ExternalIP,
+			ExternalIP:   m.ExternalIP,
 		}
 		err = c.addMapping(OpCode(OpMap), lifetime, mapData)
 	} else {
@@ -243,13 +243,13 @@ func (c *Client) RefreshPeerMapping(internalPort uint16, lifetime uint32) (err e
 	if m, exists := c.PeerMappings[internalPort]; exists {
 		peerData := &OpDataPeer{
 			OpDataMap: OpDataMap{
-				Protocol: m.Protocol,
+				Protocol:     m.Protocol,
 				InternalPort: m.InternalPort,
 				ExternalPort: m.ExternalPort,
-				ExternalIP: m.ExternalIP,
+				ExternalIP:   m.ExternalIP,
 			},
 			RemotePort: m.RemotePort,
-			RemoteIP: m.RemoteIP,
+			RemoteIP:   m.RemoteIP,
 		}
 		err = c.addMapping(OpCode(OpPeer), lifetime, peerData)
 	} else {
@@ -292,7 +292,7 @@ func (c *Client) addMapping(op OpCode, lifetime uint32, data interface{}) (err e
 	rt := getRefreshTime(0, lifetime)
 	refresh := RefreshTime{
 		Attempt: 0,
-		Time: rt,
+		Time:    rt,
 	}
 
 	switch op {
@@ -300,14 +300,14 @@ func (c *Client) addMapping(op OpCode, lifetime uint32, data interface{}) (err e
 		d := data.(*OpDataMap)
 		portMap := PortMap{
 			OpDataMap: OpDataMap{
-				Protocol: d.Protocol,
+				Protocol:     d.Protocol,
 				InternalPort: d.InternalPort,
 				ExternalPort: d.ExternalPort,
-				ExternalIP: d.ExternalIP,
+				ExternalIP:   d.ExternalIP,
 			},
-			Active: false,
+			Active:   false,
 			Lifetime: lifetime,
-			Refresh: refresh,
+			Refresh:  refresh,
 		}
 		c.Mappings[d.InternalPort] = portMap
 	case OpPeer:
@@ -315,17 +315,17 @@ func (c *Client) addMapping(op OpCode, lifetime uint32, data interface{}) (err e
 		peerMap := PeerMap{
 			PortMap: PortMap{
 				OpDataMap: OpDataMap{
-					Protocol: d.Protocol,
+					Protocol:     d.Protocol,
 					InternalPort: d.InternalPort,
 					ExternalPort: d.ExternalPort,
-					ExternalIP: d.ExternalIP,
+					ExternalIP:   d.ExternalIP,
 				},
-				Active: false,
+				Active:   false,
 				Lifetime: lifetime,
-				Refresh: refresh,
+				Refresh:  refresh,
 			},
 			RemotePort: d.RemotePort,
-			RemoteIP: d.RemoteIP,
+			RemoteIP:   d.RemoteIP,
 		}
 		c.PeerMappings[d.InternalPort] = peerMap
 	}

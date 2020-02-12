@@ -15,7 +15,7 @@ var (
 	ErrPortNotSpecified   = errors.New("you must specify a port")
 	ErrNonceGeneration    = errors.New("an error occured whilst generating nonce")
 	ErrMapDataPayload     = errors.New("could not create the map data payload")
-	ErrPeerDataPayload     = errors.New("could not create the peer data payload")
+	ErrPeerDataPayload    = errors.New("could not create the peer data payload")
 	ErrRequestDataPayload = errors.New("could not create the request data payload")
 	ErrNetworkSend        = errors.New("an error occured whilst sending the network request")
 	ErrMappingNotFound    = errors.New("mapping not found")

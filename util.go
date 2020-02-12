@@ -1,7 +1,7 @@
 package main
 
-import(
-  crand "crypto/rand"
+import (
+	crand "crypto/rand"
 	"math/rand"
 	"time"
 
@@ -43,17 +43,17 @@ func getRefreshTime(attempt int, lifetime uint32) int64 {
 	rand.Seed(time.Now().UnixNano())
 	t := time.Now()
 	//See 11.2.1 of RFC6887
-	max := t.Unix() + (5 * int64(lifetime)) / (1 << (attempt + 3))
-	min := t.Unix() + (int64(lifetime)) / (1 << (attempt + 1))
+	max := t.Unix() + (5*int64(lifetime))/(1<<(attempt+3))
+	min := t.Unix() + (int64(lifetime))/(1<<(attempt+1))
 	var interval int64
 	if (max - min) > 0 {
-		interval = rand.Int63n(max - min) + min
+		interval = rand.Int63n(max-min) + min
 	}
 	if interval < 4 {
 		interval = t.Unix() + 4
 	}
-	log.Debug(max, min, max - min)
-	log.Debugf("max - current: %d min - current: %d random int: %d, lifetime: %d", max - t.Unix(), min - t.Unix(), interval - t.Unix(), lifetime)
+	log.Debug(max, min, max-min)
+	log.Debugf("max - current: %d min - current: %d random int: %d, lifetime: %d", max-t.Unix(), min-t.Unix(), interval-t.Unix(), lifetime)
 	log.Debugf("Refresh max: %d Refresh min: %d Time now: %d Interval: %d", max, min, t.Unix(), interval)
 	return interval
 }

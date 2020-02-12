@@ -16,6 +16,7 @@ const (
 
 type OpCode uint8
 type OptionOpCode uint8
+
 //At a later date it would be worth integrating with the IANA package to be fully compliant.
 //For now, just implement common protocols
 type Protocol uint8
@@ -30,29 +31,28 @@ type OpDataMap struct {
 
 type OpDataPeer struct {
 	OpDataMap
-	RemotePort   uint16
-	RemoteIP     net.IP
+	RemotePort uint16
+	RemoteIP   net.IP
 }
 
 //Potentially add in progress bool
 type RefreshTime struct {
 	Attempt int
-	Time int64
+	Time    int64
 }
 
 type PortMap struct {
 	OpDataMap
-	Active       bool
-	Lifetime     uint32
-	Refresh      RefreshTime
+	Active   bool
+	Lifetime uint32
+	Refresh  RefreshTime
 }
 
 type PeerMap struct {
 	PortMap
-	RemotePort   uint16
-	RemoteIP     net.IP
+	RemotePort uint16
+	RemoteIP   net.IP
 }
-
 
 func (o OpCode) String() string {
 	return [...]string{"OpAnnounce", "OpMap", "OpPeer"}[o]
@@ -172,10 +172,10 @@ func (data *OpDataMap) marshal(nonce []byte) (msg []byte, err error) {
 
 func (data *OpDataMap) unmarshal(msg []byte) (err error) {
 	data = &OpDataMap{
-		Protocol: Protocol(msg[12]),
+		Protocol:     Protocol(msg[12]),
 		InternalPort: binary.BigEndian.Uint16(msg[16:18]),
 		ExternalPort: binary.BigEndian.Uint16(msg[18:20]),
-		ExternalIP: net.IP(msg[20:36]),
+		ExternalIP:   net.IP(msg[20:36]),
 	}
 	return
 }
@@ -223,13 +223,13 @@ func (data *OpDataPeer) marshal(nonce []byte) (msg []byte, err error) {
 func (data *OpDataPeer) unmarshal(msg []byte) (err error) {
 	data = &OpDataPeer{
 		OpDataMap: OpDataMap{
-			Protocol: Protocol(msg[12]),
+			Protocol:     Protocol(msg[12]),
 			InternalPort: binary.BigEndian.Uint16(msg[16:18]),
 			ExternalPort: binary.BigEndian.Uint16(msg[18:20]),
-			ExternalIP: net.IP(msg[20:36]),
+			ExternalIP:   net.IP(msg[20:36]),
 		},
 		RemotePort: binary.BigEndian.Uint16(msg[36:38]),
-		RemoteIP: net.IP(msg[40:56]),
+		RemoteIP:   net.IP(msg[40:56]),
 	}
 	return
 }

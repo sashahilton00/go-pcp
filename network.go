@@ -115,18 +115,18 @@ func (c *Client) handleMessage() (err error) {
 
 					rt := RefreshTime{
 						Attempt: 0,
-						Time: getRefreshTime(0, res.lifetime),
+						Time:    getRefreshTime(0, res.lifetime),
 					}
 					m := PortMap{
 						OpDataMap: OpDataMap{
-							Protocol: data.Protocol,
+							Protocol:     data.Protocol,
 							InternalPort: data.InternalPort,
 							ExternalPort: data.ExternalPort,
-							ExternalIP: data.ExternalIP,
+							ExternalIP:   data.ExternalIP,
 						},
-						Active: true,
+						Active:   true,
 						Lifetime: res.lifetime,
-						Refresh: rt,
+						Refresh:  rt,
 					}
 					c.Mappings[data.InternalPort] = m
 					c.Event <- Event{ActionReceivedMapping, m}
@@ -136,8 +136,8 @@ func (c *Client) handleMessage() (err error) {
 					log.Warnf("Unrecognised OpCode: %d", res.opCode)
 				}
 			case ResultUnsupportedVersion:
-					log.Fatal("Server uses an unsupported PCP version.")
-					os.Exit(1)
+				log.Fatal("Server uses an unsupported PCP version.")
+				os.Exit(1)
 			}
 
 			t := time.Now()
