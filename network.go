@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/rand"
 	"fmt"
 	"net"
 	"os"
@@ -164,10 +163,4 @@ func (c *Client) Close() {
 	c.conn.Close()
 	close(c.Event)
 	c.cancelled = true
-}
-
-func genRandomBytes(size int) (blk []byte, err error) {
-	blk = make([]byte, size)
-	_, err = rand.Read(blk)
-	return
 }

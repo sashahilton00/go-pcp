@@ -8,9 +8,51 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+const (
+	ProtocolAll Protocol = 0
+	ProtocolTCP Protocol = 6
+	ProtocolUDP Protocol = 17
+)
+
 type OpCode uint8
 type OptionOpCode uint8
+//At a later date it would be worth integrating with the IANA package to be fully compliant.
+//For now, just implement common protocols
+type Protocol uint8
 type ResultCode uint8
+
+type OpDataMap struct {
+	Protocol     Protocol
+	InternalPort uint16
+	ExternalPort uint16 //This is only a suggestion in request. Server ultimately decides.
+	ExternalIP   net.IP //Also only a suggestion
+}
+
+type OpDataPeer struct {
+	OpDataMap
+	RemotePort   uint16
+	RemoteIP     net.IP
+}
+
+//Potentially add in progress bool
+type RefreshTime struct {
+	Attempt int
+	Time int64
+}
+
+type PortMap struct {
+	OpDataMap
+	Active       bool
+	Lifetime     uint32
+	Refresh      RefreshTime
+}
+
+type PeerMap struct {
+	PortMap
+	RemotePort   uint16
+	RemoteIP     net.IP
+}
+
 
 func (o OpCode) String() string {
 	return [...]string{"OpAnnounce", "OpMap", "OpPeer"}[o]
@@ -18,6 +60,10 @@ func (o OpCode) String() string {
 
 func (o OptionOpCode) String() string {
 	return [...]string{"OptionOpReserved", "OptionOpThirdParty", "OptionOpPreferFailure", "OptionOpFilter", "OptionOpNonce", "OptionOpAuthenticationTag", "OptionOpPaAuthenticationTag", "OptionOpEapPayload", "OptionOpPrf", "OptionOpMacAlgorithm", "OptionOpSessionLifetime", "OptionOpReceivedPak", "OptionOpIdIndicator", "OptionOpThirdPartyId"}[o]
+}
+
+func (p Protocol) String() string {
+	return [...]string{"ProtocolAll", "ProtocolTCP", "ProtocolUDP"}[p]
 }
 
 func (r ResultCode) String() string {
@@ -91,15 +137,101 @@ type ResponsePacket struct {
 	pcpOptions []PCPOption
 }
 
-//Necessary for padding all messages to multiple of 4 octets
-func addPadding(data []byte) (out []byte) {
-	length := len(data)
-	padding := 4 - (length % 4)
-	if padding > 0 {
-		empty := make([]byte, padding)
-		out = append(data, empty...)
+func (data *OpDataMap) marshal(nonce []byte) (msg []byte, err error) {
+	//Potentially relax requirement for non-zero. Appears to be valid in the spec when combined with ProtocolAll.
+	//Also, marshal is probably the wrong place for this, since it technically doesn't cause an error.
+	if data.InternalPort == 0 {
+		return nil, ErrPortNotSpecified
 	}
-	return out
+
+	empty := make([]byte, 3)
+
+	internalPortBytes := make([]byte, 2)
+	binary.BigEndian.PutUint16(internalPortBytes, data.InternalPort)
+
+	externalPortBytes := make([]byte, 2)
+	binary.BigEndian.PutUint16(externalPortBytes, data.ExternalPort)
+
+	addr := make([]byte, 16)
+	if data.ExternalIP != nil {
+		copy(addr, data.ExternalIP)
+	}
+
+	var slices = [][]byte{
+		nonce,
+		[]byte{byte(data.Protocol)},
+		empty,
+		internalPortBytes,
+		externalPortBytes,
+		addr,
+	}
+
+	msg = concatCopyPreAllocate(slices)
+	return
+}
+
+func (data *OpDataMap) unmarshal(msg []byte) (err error) {
+	data = &OpDataMap{
+		Protocol: Protocol(msg[12]),
+		InternalPort: binary.BigEndian.Uint16(msg[16:18]),
+		ExternalPort: binary.BigEndian.Uint16(msg[18:20]),
+		ExternalIP: net.IP(msg[20:36]),
+	}
+	return
+}
+
+func (data *OpDataPeer) marshal(nonce []byte) (msg []byte, err error) {
+	//Potentially relax requirement for non-zero. Appears to be valid in the spec when combined with ProtocolAll.
+	//Also, marshal is probably the wrong place for this, since it technically doesn't cause an error.
+	if data.InternalPort == 0 {
+		return nil, ErrPortNotSpecified
+	}
+
+	r1, r2 := make([]byte, 3), make([]byte, 2)
+
+	internalPortBytes, externalPortBytes, remotePortBytes := make([]byte, 2), make([]byte, 2), make([]byte, 2)
+
+	binary.BigEndian.PutUint16(internalPortBytes, data.InternalPort)
+	binary.BigEndian.PutUint16(externalPortBytes, data.ExternalPort)
+	binary.BigEndian.PutUint16(remotePortBytes, data.RemotePort)
+
+	addr, remoteAddr := make([]byte, 16), make([]byte, 16)
+	if data.ExternalIP != nil {
+		copy(addr, data.ExternalIP)
+	}
+	if data.RemoteIP == nil {
+		return nil, ErrNoAddress
+	}
+	copy(remoteAddr, data.RemoteIP)
+
+	var slices = [][]byte{
+		nonce,
+		[]byte{byte(data.Protocol)},
+		r1,
+		internalPortBytes,
+		externalPortBytes,
+		addr,
+		remotePortBytes,
+		r2,
+		remoteAddr,
+	}
+
+	msg = concatCopyPreAllocate(slices)
+	return
+}
+
+func (data *OpDataPeer) unmarshal(msg []byte) (err error) {
+	data = &OpDataPeer{
+		OpDataMap: OpDataMap{
+			Protocol: Protocol(msg[12]),
+			InternalPort: binary.BigEndian.Uint16(msg[16:18]),
+			ExternalPort: binary.BigEndian.Uint16(msg[18:20]),
+			ExternalIP: net.IP(msg[20:36]),
+		},
+		RemotePort: binary.BigEndian.Uint16(msg[36:38]),
+		RemoteIP: net.IP(msg[40:56]),
+	}
+	return
 }
 
 func (req *RequestPacket) marshal() (msg []byte, err error) {
