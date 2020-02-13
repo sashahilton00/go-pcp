@@ -154,8 +154,6 @@ L:
 
 func (c *Client) GetGatewayAddress() (addr net.IP, err error) {
 	addr, err = gateway.DiscoverGateway()
-	//Only during testing
-	addr = net.ParseIP("127.0.0.1")
 	if err != nil {
 		return nil, ErrGatewayNotFound
 	}
@@ -165,11 +163,15 @@ func (c *Client) GetGatewayAddress() (addr net.IP, err error) {
 func (c *Client) GetExternalAddress() (addr net.IP, err error) {
 	// Will create a short mapping with PCP server and return the address returned
 	// by the server in the response packet. Use UDP/9 (Discard) as short mapping.
+	internalAddr, err := c.GetInternalAddress()
+	if err != nil {
+		return nil, ErrNoInternalAddress
+	}
 	mapData := &OpDataMap{
 		Protocol:     ProtocolUDP,
 		InternalPort: 9,
 		ExternalPort: 0,
-		ExternalIP:   net.ParseIP("127.0.0.1"),
+		ExternalIP:   internalAddr,
 	}
 	err = c.addMapping(OpMap, 30, mapData)
 	if err != nil {
