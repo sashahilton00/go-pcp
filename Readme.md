@@ -13,7 +13,7 @@ As it stands, progress is as follows:
 - [ ] Implement PCP option support.
 - [ ] Properly document methods.
 
-# Known Bugs/Non-Compliant Features
+### Known Bugs/Non-Compliant Features
 
 - A number of the network traffic codes specified in the official have yet to be implemented. Currently the All, TCP & UDP codes are present. There is an IANA package that should make adding the remaining codes pretty simple.
 
