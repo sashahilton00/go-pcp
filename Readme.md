@@ -8,7 +8,7 @@ As it stands, progress is as follows:
 
 - [x] Map Opcode implemented. Can Add/Delete/Refresh port mappings.
 - [x] Peer Opcode implemented. Can Add/Delete/Refresh peer mappings.
-- [ ] Announce Opcode not currently implemented.
+- [x] Announce Opcode implemented.
 - [ ] Provide proper events to Event chan of client.
 - [ ] Implement PCP option support.
 - [ ] Properly document methods.
@@ -17,7 +17,7 @@ As it stands, progress is as follows:
 
 - Connection to PCP server is not tested. Currently the connection is just opened, and data sent to it. The connection needs to remain open to listen for announce events. During connection dialling, a test payload should be sent, and a timeout error returned if server is not available.
 
-- A number of the network traffic codes specified in the official have yet to be implemented. Currently the All, TCP & UDP codes are present. There is an IANA package that should make adding the remaining codes pretty simple.
+- A number of the network traffic codes specified in the official specification have yet to be implemented. Currently the All, TCP & UDP codes are present. There is an IANA package that should make adding the remaining codes pretty simple.
 
 - PCP Options are not implemented in the methods currently. 90% of the code is there, but the methods do not provide any means to pass in PCP options.
 

@@ -360,3 +360,23 @@ func (c *Client) epochValid(clientTime int64, serverTime uint32) bool {
 	e.prevClientTime = clientTime
 	return s
 }
+
+func (c *Client) refreshMappings() (err error) {
+	for k, v := range c.Mappings {
+		err = c.RefreshPortMapping(k, v.Lifetime)
+		if err != nil {
+			return
+		}
+		//Leave a little time between requests
+		time.Sleep(100 * time.Millisecond)
+	}
+	for k, v := range c.PeerMappings {
+		err = c.RefreshPeerMapping(k, v.Lifetime)
+		if err != nil {
+			return
+		}
+		//Leave a little time between requests
+		time.Sleep(100 * time.Millisecond)
+	}
+	return
+}

@@ -51,7 +51,6 @@ func (c *Client) checkMappings() (err error) {
 				}
 			}
 		}
-		//Run once a second
 		time.Sleep(time.Second)
 	}
 }
@@ -103,9 +102,9 @@ func (c *Client) handleMessage() (err error) {
 				//Process ResponsePacket here and send events.
 				switch res.opCode {
 				case OpAnnounce:
-					//OpAnnounce case
+					log.Debug("Announce Opcode received.")
+					c.Event <- Event{ActionReceivedAnnounce, nil}
 				case OpMap:
-					//OpMap case
 					var data OpDataMap
 					err = data.unmarshal(res.opData)
 					if err != nil {
@@ -131,20 +130,49 @@ func (c *Client) handleMessage() (err error) {
 					c.Mappings[data.InternalPort] = m
 					c.Event <- Event{ActionReceivedMapping, m}
 				case OpPeer:
-					//OpPeer case
+					var data OpDataPeer
+					err = data.unmarshal(res.opData)
+					if err != nil {
+						log.Errorf("Could not parse Peer OpData: %s\n", err)
+						continue
+					}
+
+					rt := RefreshTime{
+						Attempt: 0,
+						Time:    getRefreshTime(0, res.lifetime),
+					}
+					m := PeerMap{
+						PortMap: PortMap{
+							OpDataMap: OpDataMap{
+								Protocol:     data.Protocol,
+								InternalPort: data.InternalPort,
+								ExternalPort: data.ExternalPort,
+								ExternalIP:   data.ExternalIP,
+							},
+							Active:   true,
+							Lifetime: res.lifetime,
+							Refresh:  rt,
+						},
+						RemotePort: res.RemotePort,
+						RemoteIP: res.RemoteIP,
+					}
+					c.Mappings[data.InternalPort] = m
+					c.Event <- Event{ActionReceivedPeer, m}
 				default:
 					log.Warnf("Unrecognised OpCode: %d", res.opCode)
 				}
 			case ResultUnsupportedVersion:
 				log.Fatal("Server uses an unsupported PCP version.")
 				os.Exit(1)
+			default:
+				log.Debugf("Non success ResultCode received. ResultCode %s", res.ResultCode)
 			}
 
 			t := time.Now()
 			valid := c.epochValid(t.Unix(), res.epoch)
 			if !valid {
-				//PCP server lost state. Refresh mappings.
 				log.Debug("Invalid epoch received. Refreshing mappings.")
+				c.refreshMappings()
 			} else {
 				log.Debugf("Epoch valid. Server Time: %d, Client Time: %d", res.epoch, t.Unix())
 			}
