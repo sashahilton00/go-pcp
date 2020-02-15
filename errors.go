@@ -18,6 +18,7 @@ var (
 	ErrPeerDataPayload    = errors.New("could not create the peer data payload")
 	ErrRequestDataPayload = errors.New("could not create the request data payload")
 	ErrNetworkSend        = errors.New("an error occured whilst sending the network request")
+	ErrNetworkTimeout			= errors.New("the connection timed out")
 	ErrMappingNotFound    = errors.New("mapping not found")
 	ErrNoAddress          = errors.New("no address specified")
 )

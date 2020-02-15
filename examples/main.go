@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -16,6 +17,7 @@ func main() {
 	client, err := NewClient()
 	if err != nil {
 		log.Error(err)
+		os.Exit(1)
 	}
 
 	addr, err := client.GetInternalAddress()

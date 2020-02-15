@@ -19,6 +19,7 @@ const (
 	ActionReceivedAnnounce = iota
 	ActionReceivedMapping
 	ActionReceivedPeer
+	ActionClose
 )
 
 type Event struct {
@@ -38,7 +39,7 @@ type Client struct {
 	PeerMappings map[uint16]PeerMap
 
 	conn      *net.UDPConn
-	cancelled bool
+	cancelled chan bool
 	epoch     *ClientEpoch
 	nonce     []byte
 }
@@ -87,6 +88,11 @@ func (c *Client) AddPeerMapping(protocol Protocol, internalPort, requestedExtern
 		RemoteIP:   remoteAddr,
 	}
 	err = c.addMapping(OpCode(OpPeer), lifetime, peerData)
+	return
+}
+
+func (c *Client) Announce() (err error) {
+	err = c.addMapping(OpCode(OpAnnounce), 0, nil)
 	return
 }
 

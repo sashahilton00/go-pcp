@@ -20,7 +20,7 @@ func NewClient() (client *Client, err error) {
 	if err != nil {
 		return nil, err
 	}
-	eventChan := make(chan Event)
+	cancelChan, eventChan := make(chan bool), make(chan Event)
 
 	mappings := make(map[uint16]PortMap)
 	peerMappings := make(map[uint16]PeerMap)
@@ -32,7 +32,7 @@ func NewClient() (client *Client, err error) {
 		return nil, ErrNonceGeneration
 	}
 
-	client = &Client{gatewayAddr, eventChan, mappings, peerMappings, conn, false, clientEpoch, nonce}
+	client = &Client{gatewayAddr, eventChan, mappings, peerMappings, conn, cancelChan, clientEpoch, nonce}
 
 	go client.handleMessage()
 	go client.checkMappings()
@@ -59,11 +59,10 @@ func (c *Client) handleMessage() (err error) {
 	ch := make(chan []byte)
 	go func() {
 		for {
-			if c.cancelled {
+			select {
+			case <- c.cancelled:
 				close(ch)
 				break
-			}
-			select {
 			case <-time.After(10 * time.Millisecond):
 				msg := make([]byte, 2048)
 				len, from, err := c.conn.ReadFromUDP(msg)
@@ -153,10 +152,10 @@ func (c *Client) handleMessage() (err error) {
 							Lifetime: res.lifetime,
 							Refresh:  rt,
 						},
-						RemotePort: res.RemotePort,
-						RemoteIP: res.RemoteIP,
+						RemotePort: data.RemotePort,
+						RemoteIP: data.RemoteIP,
 					}
-					c.Mappings[data.InternalPort] = m
+					c.PeerMappings[data.InternalPort] = m
 					c.Event <- Event{ActionReceivedPeer, m}
 				default:
 					log.Warnf("Unrecognised OpCode: %d", res.opCode)
@@ -165,7 +164,7 @@ func (c *Client) handleMessage() (err error) {
 				log.Fatal("Server uses an unsupported PCP version.")
 				os.Exit(1)
 			default:
-				log.Debugf("Non success ResultCode received. ResultCode %s", res.ResultCode)
+				log.Debugf("Non success ResultCode received. ResultCode %s", res.resultCode)
 			}
 
 			t := time.Now()
@@ -186,9 +185,12 @@ func (c *Client) sendMessage(msg []byte) (err error) {
 	return
 }
 
-//Closes connection to PCP server and closes event channel
+//Closes connection to PCP server and returns close event
 func (c *Client) Close() {
-	c.conn.Close()
-	close(c.Event)
-	c.cancelled = true
+	c.cancelled <- true
+	c.Event <- Event{
+		Action: ActionClose,
+		Data: nil,
+	}
+	return
 }
