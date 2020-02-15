@@ -10,7 +10,7 @@ import (
 )
 
 //Potentially add deviceAddr at a later stage
-func NewClient() (client *Client, err error) {
+func NewClient(timeout int) (client *Client, err error) {
 	gatewayAddr, err := client.GetGatewayAddress()
 	if err != nil {
 		return nil, err
@@ -34,9 +34,21 @@ func NewClient() (client *Client, err error) {
 
 	client = &Client{gatewayAddr, eventChan, mappings, peerMappings, conn, cancelChan, clientEpoch, nonce}
 
-	go client.handleMessage()
-	go client.checkMappings()
-	return client, nil
+	client.Announce()
+	for {
+		select {
+		case event := <-client.Event:
+			if event.Action == ActionReceivedAnnounce {
+				go client.handleMessage()
+				go client.checkMappings()
+				return client, nil
+			}
+		case <- time.After(time.Duration(timeout) * time.Second):
+			return nil, ErrNetworkTimeout
+		}
+		time.Sleep(time.Millisecond)
+	}
+
 }
 
 func (c *Client) checkMappings() (err error) {

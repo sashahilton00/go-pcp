@@ -14,7 +14,7 @@ func init() {
 
 func main() {
 	var client *Client
-	client, err := NewClient()
+	client, err := NewClient(5)
 	if err != nil {
 		log.Error(err)
 		os.Exit(1)
